@@ -645,29 +645,29 @@ CPUState *qemu_get_cpu(int index)
 
 MemoryListener rr_listener;
 
-static RR_mem_type rr_mem_region_type(MemoryRegion* mr) {
-    RR_mem_type mtype = RR_MEM_UNKNOWN;
-    if (!(memory_region_is_ram(mr) || memory_region_is_romd(mr))) {
-        mtype = RR_MEM_IO;
-    } else if (memory_region_is_ram(mr)) {
-        mtype = RR_MEM_RAM;
-    }
-    return mtype;
-}
+// static RR_mem_type rr_mem_region_type(MemoryRegion* mr) {
+//     RR_mem_type mtype = RR_MEM_UNKNOWN;
+//     if (!(memory_region_is_ram(mr) || memory_region_is_romd(mr))) {
+//         mtype = RR_MEM_IO;
+//     } else if (memory_region_is_ram(mr)) {
+//         mtype = RR_MEM_RAM;
+//     }
+//     return mtype;
+// }
 
 static void rr_mem_region_added_cb(MemoryListener *listener, MemoryRegionSection *section) {
-    if (!rr_in_record()) return;
-    RR_mem_type mtype = rr_mem_region_type(section->mr);
+    // if (!rr_in_record()) return;
+    // RR_mem_type mtype = rr_mem_region_type(section->mr);
 
-    rr_mem_region_change_record(section->offset_within_address_space, int128_get64(section->size),
-                                section->mr->name, mtype, true);
+    // rr_mem_region_change_record(section->offset_within_address_space, int128_get64(section->size),
+    //                             section->mr->name, mtype, true);
 }
 
 static void rr_mem_region_deleted_cb(MemoryListener *listener, MemoryRegionSection *section) {
-    if (!rr_in_record()) return;
-    RR_mem_type mtype = rr_mem_region_type(section->mr);
-    rr_mem_region_change_record(section->offset_within_address_space, int128_get64(section->size),
-                                section->mr->name, mtype, false);
+    // if (!rr_in_record()) return;
+    // RR_mem_type mtype = rr_mem_region_type(section->mr);
+    // rr_mem_region_change_record(section->offset_within_address_space, int128_get64(section->size),
+    //                             section->mr->name, mtype, false);
 }
 
 void cpu_address_space_init(CPUState *cpu, AddressSpace *as, int asidx)
@@ -2952,11 +2952,11 @@ static MemTxResult address_space_write_continue(AddressSpace *as, hwaddr addr,
         } else {
             /* RAM case */
             ptr = qemu_ram_ptr_length(mr->ram_block, addr1, &l, false);
-            if (rr_in_record() && (rr_record_in_progress || rr_record_in_main_loop_wait)) {
+            // if (rr_in_record() && (rr_record_in_progress || rr_record_in_main_loop_wait)) {
                 // We should record the memory address relative to the address space, not physical memory.
                 // During replay, this address will be translated into the physical address.
-                rr_device_mem_rw_call_record(addr, buf, l, /*is_write*/1);
-            }
+                // rr_device_mem_rw_call_record(addr, buf, l, /*is_write*/1);
+            // }
             panda_callbacks_replay_before_dma(first_cpu, buf, addr1, l, true);
             memcpy(ptr, buf, l);
             panda_callbacks_replay_after_dma(first_cpu, buf, addr1, l, true);
@@ -3170,9 +3170,9 @@ static inline void cpu_physical_memory_write_rom_internal(AddressSpace *as,
             ptr = qemu_map_ram_ptr(mr->ram_block, addr1);
             switch (type) {
             case WRITE_DATA:
-                if (rr_in_record() && (rr_record_in_progress || rr_record_in_main_loop_wait)) {
-                    rr_device_mem_rw_call_record(addr1, buf, l, 1);
-                }
+                // if (rr_in_record() && (rr_record_in_progress || rr_record_in_main_loop_wait)) {
+                //     rr_device_mem_rw_call_record(addr1, buf, l, 1);
+                // }
                 memcpy(ptr, buf, l);
                 invalidate_and_set_dirty(mr, addr1, l);
                 break;
@@ -3431,9 +3431,9 @@ void address_space_unmap(AddressSpace *as, void *buffer, hwaddr len,
         assert(mr != NULL);
         if (is_write) {
             //bdg Save addr1,access_len,buffer contents
-            if (rr_in_record()) {
-                rr_device_mem_unmap_call_record(addr1, buffer, access_len, is_write);
-            }
+            // if (rr_in_record()) {
+            //     rr_device_mem_unmap_call_record(addr1, buffer, access_len, is_write);
+            // }
             invalidate_and_set_dirty(mr, addr1, access_len);
         }
         if (xen_enabled()) {

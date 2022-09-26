@@ -585,7 +585,7 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
     //record the same value in the log as the one being used in
     //these decisions.
     rr_skipped_callsite_location = RR_CALLSITE_CPU_HANDLE_INTERRUPT_BEFORE;
-    rr_interrupt_request(&interrupt_request);
+    // rr_interrupt_request(&interrupt_request);
 
     if (rr_in_replay()) {
         cpu->interrupt_request = interrupt_request;
@@ -643,7 +643,7 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
 #ifdef CONFIG_SOFTMMU
         //mz record the value again in case do_interrupt has set EXITTB flag
         rr_skipped_callsite_location = RR_CALLSITE_CPU_HANDLE_INTERRUPT_AFTER;
-        rr_interrupt_request((int *)&cpu->interrupt_request);
+        // rr_interrupt_request((int *)&cpu->interrupt_request);
         if (rr_in_replay()) {
             interrupt_request = cpu->interrupt_request;
         }

@@ -82,6 +82,10 @@ volatile sig_atomic_t rr_skipped_callsite_location = 0;
 RR_log* rr_nondet_log = NULL;
 
 bool rr_replay_complete = false;
+uint64_t accumulate_time = 0;
+uint64_t dma_accul_time = 0;
+uint64_t cpu_intput_time = 0;
+uint64_t intr_time = 0;
 
 // our own assertion mechanism
 #define rr_assert(exp)                                                         \
@@ -270,6 +274,7 @@ static inline void rr_write_item(RR_log_entry item)
     if (!rr_in_record()) return;
     rr_assert(rr_nondet_log != NULL);
 
+    uint64_t start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
 #define RR_WRITE_ITEM(field) rr_fwrite(&(field), sizeof(field), 1)
     // keep replay format the same.
     RR_WRITE_ITEM(item.header.prog_point.guest_instr_count);
@@ -364,6 +369,7 @@ static inline void rr_write_item(RR_log_entry item)
             // mz unimplemented
             rr_assert(0 && "Unimplemented replay log entry!");
     }
+    accumulate_time += (qemu_clock_get_ms(QEMU_CLOCK_HOST) - start);
 }
 
 static inline RR_header rr_header(RR_log_entry_kind kind,
@@ -377,34 +383,42 @@ static inline RR_header rr_header(RR_log_entry_kind kind,
 
 // mz record 1-byte CPU input to log file
 void rr_record_input_1(RR_callsite_id call_site, uint8_t data) {
-    rr_write_item((RR_log_entry) {
-        .header = rr_header(RR_INPUT_1, call_site),
-        .variant.input_1 = data
-    });
+    // uint64_t start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+    // rr_write_item((RR_log_entry) {
+    //     .header = rr_header(RR_INPUT_1, call_site),
+    //     .variant.input_1 = data
+    // });
+    // cpu_intput_time += (qemu_clock_get_ms(QEMU_CLOCK_HOST) - start);
 }
 
 // mz record 2-byte CPU input to log file
 void rr_record_input_2(RR_callsite_id call_site, uint16_t data) {
-    rr_write_item((RR_log_entry) {
-        .header = rr_header(RR_INPUT_2, call_site),
-        .variant.input_2 = data
-    });
+    // uint64_t start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+    // rr_write_item((RR_log_entry) {
+    //     .header = rr_header(RR_INPUT_2, call_site),
+    //     .variant.input_2 = data
+    // });
+    // cpu_intput_time += (qemu_clock_get_ms(QEMU_CLOCK_HOST) - start);
 }
 
 // mz record 4-byte CPU input to log file
 void rr_record_input_4(RR_callsite_id call_site, uint32_t data) {
-    rr_write_item((RR_log_entry) {
-        .header = rr_header(RR_INPUT_4, call_site),
-        .variant.input_4 = data
-    });
+    // uint64_t start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+    // rr_write_item((RR_log_entry) {
+    //     .header = rr_header(RR_INPUT_4, call_site),
+    //     .variant.input_4 = data
+    // });
+    // cpu_intput_time += (qemu_clock_get_ms(QEMU_CLOCK_HOST) - start);
 }
 
 // mz record 8-byte CPU input to log file
 void rr_record_input_8(RR_callsite_id call_site, uint64_t data) {
-    rr_write_item((RR_log_entry) {
-        .header = rr_header(RR_INPUT_8, call_site),
-        .variant.input_8 = data
-    });
+    // uint64_t start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+    // rr_write_item((RR_log_entry) {
+    //     .header = rr_header(RR_INPUT_8, call_site),
+    //     .variant.input_8 = data
+    // });
+    // cpu_intput_time += (qemu_clock_get_ms(QEMU_CLOCK_HOST) - start);
 }
 
 /**
@@ -418,13 +432,15 @@ int panda_current_interrupt_request = 0;
 void rr_record_interrupt_request(RR_callsite_id call_site,
                                  int interrupt_request)
 {
-    if (panda_current_interrupt_request != interrupt_request) {
-        rr_write_item((RR_log_entry) {
-            .header = rr_header(RR_INTERRUPT_REQUEST, call_site),
-            .variant.interrupt_request = interrupt_request
-        });
-        panda_current_interrupt_request = interrupt_request;
-    }
+    // uint64_t start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+    // if (panda_current_interrupt_request != interrupt_request) {
+    //     rr_write_item((RR_log_entry) {
+    //         .header = rr_header(RR_INTERRUPT_REQUEST, call_site),
+    //         .variant.interrupt_request = interrupt_request
+    //     });
+    //     panda_current_interrupt_request = interrupt_request;
+    // }
+    // intr_time += (qemu_clock_get_ms(QEMU_CLOCK_HOST) - start);
 }
 
 int prev_guest_instr_count = -1;
@@ -432,96 +448,98 @@ uint32_t panda_prev_pending_int = -1;
 
 //rw: Pending_interrupts field for powerpc
 void rr_record_pending_interrupts(RR_callsite_id call_site, uint32_t pending_int){
+    // uint64_t start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
     // Determine if pending interrupt has changed or not, and if not, do not rewrite log.
-    RR_log_entry item;
+    // RR_log_entry item;
 
-    if (pending_int == panda_prev_pending_int){
-        return;
-    }
-    panda_prev_pending_int = pending_int;
+    // if (pending_int == panda_prev_pending_int){
+    //     return;
+    // }
+    // panda_prev_pending_int = pending_int;
 
-    uint64_t guest_instr_count = rr_get_guest_instr_count();
-    if (guest_instr_count == prev_guest_instr_count){
-        return;
-    }
-    prev_guest_instr_count = guest_instr_count;
+    // uint64_t guest_instr_count = rr_get_guest_instr_count();
+    // if (guest_instr_count == prev_guest_instr_count){
+    //     return;
+    // }
+    // prev_guest_instr_count = guest_instr_count;
 
-    memset(&item, 0, sizeof(RR_log_entry));
-    item.header.kind = RR_PENDING_INTERRUPTS;
-    item.header.callsite_loc = call_site;
-    item.header.prog_point = rr_prog_point();
+    // memset(&item, 0, sizeof(RR_log_entry));
+    // item.header.kind = RR_PENDING_INTERRUPTS;
+    // item.header.callsite_loc = call_site;
+    // item.header.prog_point = rr_prog_point();
 
-    item.variant.pending_interrupts = pending_int;
+    // item.variant.pending_interrupts = pending_int;
 
-    rr_write_item(item);
+    // rr_write_item(item);
+    // intr_time += (qemu_clock_get_ms(QEMU_CLOCK_HOST) - start);
 }
 
 //rw 6/20/17: Added as a fix for powerpc
 void rr_record_exception_index(RR_callsite_id call_site,
         int32_t exception_index) {
-    if (exception_index != -1) {
-        rr_write_item((RR_log_entry) {
-            .header = rr_header(RR_EXCEPTION, call_site),
-            .variant.exception_index = exception_index
-        });
-    }
+    // if (exception_index != -1) {
+    //     rr_write_item((RR_log_entry) {
+    //         .header = rr_header(RR_EXCEPTION, call_site),
+    //         .variant.exception_index = exception_index
+    //     });
+    // }
 }
 
 void rr_record_exit_request(RR_callsite_id call_site, uint32_t exit_request)
 {
-    if (exit_request != 0) {
-        rr_write_item((RR_log_entry) {
-            .header = rr_header(RR_EXIT_REQUEST, call_site),
-            .variant.exit_request = exit_request
-        });
-    }
+    // if (exit_request != 0) {
+    //     rr_write_item((RR_log_entry) {
+    //         .header = rr_header(RR_EXIT_REQUEST, call_site),
+    //         .variant.exit_request = exit_request
+    //     });
+    // }
 }
 
 static inline void rr_record_skipped_call(RR_skipped_call_args args) {
-    rr_write_item((RR_log_entry) {
-        .header = rr_header(RR_SKIPPED_CALL, rr_skipped_callsite_location),
-        .variant.call_args = args
-    });
+    // rr_write_item((RR_log_entry) {
+    //     .header = rr_header(RR_SKIPPED_CALL, rr_skipped_callsite_location),
+    //     .variant.call_args = args
+    // });
 }
 
 void rr_device_mem_rw_call_record(hwaddr addr, const uint8_t* buf,
                                   int len, int is_write) {
-    rr_record_skipped_call((RR_skipped_call_args) {
-        .kind = RR_CALL_CPU_MEM_RW,
-        .variant.cpu_mem_rw_args = {
-            .addr = addr,
-            .buf = (uint8_t *)buf,
-            .len = len
-        }
-    });
+    // rr_record_skipped_call((RR_skipped_call_args) {
+    //     .kind = RR_CALL_CPU_MEM_RW,
+    //     .variant.cpu_mem_rw_args = {
+    //         .addr = addr,
+    //         .buf = (uint8_t *)buf,
+    //         .len = len
+    //     }
+    // });
 }
 
 // mm: Record an external register write, e.g. via GDB
 void rr_cpu_reg_write_call_record(int cpu_index, const uint8_t* buf,
                                   int reg, int len) {
-    rr_record_skipped_call((RR_skipped_call_args) {
-        .kind = RR_CALL_CPU_REG_WRITE,
-        .variant.cpu_reg_write_args = {
-            .cpu_index = cpu_index,
-            .buf = (uint8_t *)buf,
-            .reg = reg,
-            .len = len
-        }
-    });
+    // rr_record_skipped_call((RR_skipped_call_args) {
+    //     .kind = RR_CALL_CPU_REG_WRITE,
+    //     .variant.cpu_reg_write_args = {
+    //         .cpu_index = cpu_index,
+    //         .buf = (uint8_t *)buf,
+    //         .reg = reg,
+    //         .len = len
+    //     }
+    // });
 }
 
 // bdg Record the memory modified during a call to
 // address_space_map/unmap.
 void rr_device_mem_unmap_call_record(hwaddr addr, const uint8_t* buf,
                                   int len, int is_write) {
-    rr_record_skipped_call((RR_skipped_call_args) {
-        .kind = RR_CALL_CPU_MEM_UNMAP,
-        .variant.cpu_mem_unmap = {
-            .addr = addr,
-            .buf = (uint8_t *)buf,
-            .len = len
-        }
-    });
+    // rr_record_skipped_call((RR_skipped_call_args) {
+    //     .kind = RR_CALL_CPU_MEM_UNMAP,
+    //     .variant.cpu_mem_unmap = {
+    //         .addr = addr,
+    //         .buf = (uint8_t *)buf,
+    //         .len = len
+    //     }
+    // });
 }
 
 
@@ -541,16 +559,16 @@ static inline uint32_t rr_chunked_crc32(void *ptr, size_t len) {
 extern QLIST_HEAD(rr_map_list, RR_MapList) rr_map_list;
 
 void rr_tracked_mem_regions_record(void) {
-    RR_MapList *region;
-    QLIST_FOREACH(region, &rr_map_list, link) {
-        uint32_t crc = rr_chunked_crc32(region->ptr, region->len);
-        if (crc != region->crc) {
-            // Pretend this is just a mem_rw call
-            rr_device_mem_rw_call_record(region->addr, region->ptr, region->len, 1);
-        }
-        // Update it so we don't keep recording it
-        region->crc = crc;
-    }
+    // RR_MapList *region;
+    // QLIST_FOREACH(region, &rr_map_list, link) {
+    //     uint32_t crc = rr_chunked_crc32(region->ptr, region->len);
+    //     if (crc != region->crc) {
+    //         // Pretend this is just a mem_rw call
+    //         rr_device_mem_rw_call_record(region->addr, region->ptr, region->len, 1);
+    //     }
+    //     // Update it so we don't keep recording it
+    //     region->crc = crc;
+    // }
 }
 
 // bdg Record a change in the I/O memory map
@@ -573,85 +591,87 @@ void rr_mem_region_change_record(hwaddr start_addr, uint64_t size,
 void rr_record_net_transfer(RR_callsite_id call_site,
                             Net_transfer_type transfer_type,
                             uint64_t src_addr, uint64_t dest_addr, uint32_t num_bytes) {
-    rr_record_skipped_call((RR_skipped_call_args) {
-        .kind = RR_CALL_NET_TRANSFER,
-        .variant.net_transfer_args = {
-            .type = transfer_type,
-            .src_addr = src_addr,
-            .dest_addr = dest_addr,
-            .num_bytes = num_bytes
-        }
-    });
+    // rr_record_skipped_call((RR_skipped_call_args) {
+    //     .kind = RR_CALL_NET_TRANSFER,
+    //     .variant.net_transfer_args = {
+    //         .type = transfer_type,
+    //         .src_addr = src_addr,
+    //         .dest_addr = dest_addr,
+    //         .num_bytes = num_bytes
+    //     }
+    // });
 }
 
 
 // SAC e1000.c network hooks needs this
 void rr_record_handle_packet_call(RR_callsite_id call_site, uint8_t *buf, int size, uint8_t direction)
 {
-    rr_record_skipped_call((RR_skipped_call_args) {
-        .kind = RR_CALL_HANDLE_PACKET,
-        .variant.handle_packet_args = {
-            .buf = buf,
-            .size = size,
-            .direction = direction
-        }
-    });
+    // rr_record_skipped_call((RR_skipped_call_args) {
+    //     .kind = RR_CALL_HANDLE_PACKET,
+    //     .variant.handle_packet_args = {
+    //         .buf = buf,
+    //         .size = size,
+    //         .direction = direction
+    //     }
+    // });
 }
 
 void rr_record_hd_transfer(RR_callsite_id call_site,
 				  Hd_transfer_type transfer_type,
 				  uint64_t src_addr, uint64_t dest_addr, uint32_t num_bytes) {
-	rr_record_skipped_call((RR_skipped_call_args) {
-        .kind = RR_CALL_HD_TRANSFER,
-        .variant.hd_transfer_args = {
-            .type = transfer_type,
-            .src_addr = src_addr,
-            .dest_addr = dest_addr,
-            .num_bytes = num_bytes
-        }
-    });
+    // uint64_t start = qemu_clock_get_ms(QEMU_CLOCK_HOST);
+	// rr_record_skipped_call((RR_skipped_call_args) {
+    //     .kind = RR_CALL_HD_TRANSFER,
+    //     .variant.hd_transfer_args = {
+    //         .type = transfer_type,
+    //         .src_addr = src_addr,
+    //         .dest_addr = dest_addr,
+    //         .num_bytes = num_bytes
+    //     }
+    // });
+    // dma_accul_time += (qemu_clock_get_ms(QEMU_CLOCK_HOST) - start);
 }
 
 void rr_record_serial_receive(RR_callsite_id call_site, uint64_t fifo_addr,
                               uint8_t value)
 {
-    rr_record_skipped_call(
-        (RR_skipped_call_args){.kind = RR_CALL_SERIAL_RECEIVE,
-                               .variant.serial_receive_args = {
-                                   .fifo_addr = fifo_addr, .value = value}});
+    // rr_record_skipped_call(
+    //     (RR_skipped_call_args){.kind = RR_CALL_SERIAL_RECEIVE,
+    //                            .variant.serial_receive_args = {
+    //                                .fifo_addr = fifo_addr, .value = value}});
 }
 
 void rr_record_serial_read(RR_callsite_id call_site, uint64_t fifo_addr,
                            uint32_t port_addr, uint8_t value)
 {
-    rr_record_skipped_call((RR_skipped_call_args){
-        .kind = RR_CALL_SERIAL_READ,
-        .variant.serial_read_args = {
-            .fifo_addr = fifo_addr, .port_addr = port_addr, .value = value}});
+    // rr_record_skipped_call((RR_skipped_call_args){
+    //     .kind = RR_CALL_SERIAL_READ,
+    //     .variant.serial_read_args = {
+    //         .fifo_addr = fifo_addr, .port_addr = port_addr, .value = value}});
 }
 
 void rr_record_serial_send(RR_callsite_id call_site, uint64_t fifo_addr,
                            uint8_t value)
 {
-    rr_record_skipped_call((RR_skipped_call_args){
-        .kind = RR_CALL_SERIAL_SEND,
-        .variant.serial_send_args = {.fifo_addr = fifo_addr, .value = value}});
+    // rr_record_skipped_call((RR_skipped_call_args){
+    //     .kind = RR_CALL_SERIAL_SEND,
+    //     .variant.serial_send_args = {.fifo_addr = fifo_addr, .value = value}});
 }
 
 void rr_record_serial_write(RR_callsite_id call_site, uint64_t fifo_addr,
                             uint32_t port_addr, uint8_t value)
 {
-    rr_record_skipped_call((RR_skipped_call_args){
-        .kind = RR_CALL_SERIAL_WRITE,
-        .variant.serial_write_args = {
-            .fifo_addr = fifo_addr, .port_addr = port_addr, .value = value}});
+    // rr_record_skipped_call((RR_skipped_call_args){
+    //     .kind = RR_CALL_SERIAL_WRITE,
+    //     .variant.serial_write_args = {
+    //         .fifo_addr = fifo_addr, .port_addr = port_addr, .value = value}});
 }
 
 // mz record a marker for end of the log
 static inline void rr_record_end_of_log(void) {
-    rr_write_item((RR_log_entry) {
-        .header = rr_header(RR_END_OF_LOG, RR_CALLSITE_END_OF_LOG)
-    });
+    // rr_write_item((RR_log_entry) {
+    //     .header = rr_header(RR_END_OF_LOG, RR_CALLSITE_END_OF_LOG)
+    // });
 }
 
 /******************************************************************************************/
@@ -1332,7 +1352,7 @@ static inline void rr_get_nondet_log_file_name(char* rr_name, char* rr_path,
 
 void rr_reset_state(CPUState* cpu)
 {
-    tb_flush(cpu);
+    // tb_flush(cpu);
     // clear flags
     rr_record_in_progress = 0;
     rr_skipped_callsite_location = 0;
@@ -1361,6 +1381,9 @@ void qmp_end_record(Error** errp)
 {
     qmp_stop(NULL);
     panda_record_end();
+    printf("cpu input time: %ldms\n", cpu_intput_time);
+    printf("interrupt time: %ldms\n", intr_time);
+    printf("dma time: %ldms\n", dma_accul_time);
 }
 
 void qmp_begin_replay(const char *filename, Error **errp) {
@@ -1426,8 +1449,8 @@ int rr_do_begin_record(const char* file_name_full, CPUState* cpu_state)
 #endif
 
 #ifdef CONFIG_SOFTMMU
-    Error* err = NULL;
-    char name_buf[1024];
+    // Error* err = NULL;
+    // char name_buf[1024];
 
     // decompose file_name_base into path & file.
     char* rr_path_base = g_strdup(file_name_full);
@@ -1447,23 +1470,23 @@ int rr_do_begin_record(const char* file_name_full, CPUState* cpu_state)
     }
 
     // write PANDA memory snapshot
-    global_state_store_running(); // force running state
-    rr_get_snapshot_file_name(rr_name, rr_path, name_buf, sizeof(name_buf));
-    printf("writing snapshot:\t%s\n", name_buf);
-    QIOChannelFile* ioc =
-        qio_channel_file_new_path(name_buf, O_WRONLY | O_CREAT, 0660, NULL);
-    QEMUFile* snp = qemu_fopen_channel_output(QIO_CHANNEL(ioc));
-    snapshot_ret = qemu_savevm_state(snp, &err);
-    qemu_fclose(snp);
+    // global_state_store_running(); // force running state
+    // rr_get_snapshot_file_name(rr_name, rr_path, name_buf, sizeof(name_buf));
+    // printf("writing snapshot:\t%s\n", name_buf);
+    // QIOChannelFile* ioc =
+    //     qio_channel_file_new_path(name_buf, O_WRONLY | O_CREAT, 0660, NULL);
+    // QEMUFile* snp = qemu_fopen_channel_output(QIO_CHANNEL(ioc));
+    // snapshot_ret = qemu_savevm_state(snp, &err);
+    // qemu_fclose(snp);
     // log_all_cpu_states();
 
     // save the time so we can report how long record takes
     time(&rr_start_time);
 
     // second, open non-deterministic input log for write.
-    rr_get_nondet_log_file_name(rr_name, rr_path, name_buf, sizeof(name_buf));
-    printf("opening nondet log for write:\t%s\n", name_buf);
-    rr_create_record_log(name_buf);
+    // rr_get_nondet_log_file_name(rr_name, rr_path, name_buf, sizeof(name_buf));
+    // printf("opening nondet log for write:\t%s\n", name_buf);
+    // rr_create_record_log(name_buf);
     // reset record/replay counters and flags
     rr_reset_state(cpu_state);
     g_free(rr_path_base);
@@ -1477,46 +1500,46 @@ int rr_do_begin_record(const char* file_name_full, CPUState* cpu_state)
 static uint32_t rr_checksum_memory_internal(void);
 void rr_do_end_record(void)
 {
-#ifdef CONFIG_SOFTMMU
-    // mz put in end-of-log marker
-    rr_record_end_of_log();
+// #ifdef CONFIG_SOFTMMU
+//     // mz put in end-of-log marker
+//     rr_record_end_of_log();
 
-    char* rr_path_base = g_strdup(rr_nondet_log->name);
-    char* rr_name_base = g_strdup(rr_nondet_log->name);
-    // char *rr_path = dirname(rr_path_base);
-    char* rr_name = basename(rr_name_base);
+//     char* rr_path_base = g_strdup(rr_nondet_log->name);
+//     char* rr_name_base = g_strdup(rr_nondet_log->name);
+//     // char *rr_path = dirname(rr_path_base);
+//     char* rr_name = basename(rr_name_base);
 
-    if (rr_debug_whisper()) {
-        qemu_log("End vm record for name = %s\n", rr_name);
-        printf("End vm record for name = %s\n", rr_name);
-    }
+//     if (rr_debug_whisper()) {
+//         qemu_log("End vm record for name = %s\n", rr_name);
+//         printf("End vm record for name = %s\n", rr_name);
+//     }
 
-    time_t rr_end_time;
-    time(&rr_end_time);
-    if (!panda_get_library_mode())  {
-      printf("Time taken was: %ld seconds.\n", rr_end_time - rr_start_time);
-      printf("Checksum of guest memory: %#08x\n", rr_checksum_memory_internal());
-    }
+//     time_t rr_end_time;
+//     time(&rr_end_time);
+//     if (!panda_get_library_mode())  {
+//       printf("Time taken was: %ld seconds.\n", rr_end_time - rr_start_time);
+//       printf("Checksum of guest memory: %#08x\n", rr_checksum_memory_internal());
+//     }
 
-    // log_all_cpu_states();
+//     // log_all_cpu_states();
 
-    rr_destroy_log();
+//     rr_destroy_log();
 
-    g_free(rr_path_base);
-    g_free(rr_name_base);
+//     g_free(rr_path_base);
+//     g_free(rr_name_base);
 
-    // cleanup rr_control struct
-    assert(rr_control.name != NULL);
-    g_free(rr_control.name);
-    rr_control.name = NULL;
-    if (rr_control.snapshot != NULL) {
-	g_free(rr_control.snapshot);
-	rr_control.snapshot = NULL;
-    }
+//     // cleanup rr_control struct
+//     assert(rr_control.name != NULL);
+//     g_free(rr_control.name);
+//     rr_control.name = NULL;
+//     if (rr_control.snapshot != NULL) {
+// 	g_free(rr_control.snapshot);
+// 	rr_control.snapshot = NULL;
+//     }
 
-    // turn off logging
-    rr_control.mode = RR_OFF;
-#endif
+//     // turn off logging
+//     rr_control.mode = RR_OFF;
+// #endif
 }
 
 // file_name_full should be full path to the record/replay log
@@ -1679,22 +1702,22 @@ void rr_do_end_replay(int is_error)
 
 // Record skipped calls.
 void rr_begin_main_loop_wait(void) {
-#ifdef CONFIG_SOFTMMU
-    if (rr_in_record()) {
-        rr_record_in_main_loop_wait = 1;
-        rr_skipped_callsite_location = RR_CALLSITE_MAIN_LOOP_WAIT;
-    }
-#endif
+// #ifdef CONFIG_SOFTMMU
+//     if (rr_in_record()) {
+//         rr_record_in_main_loop_wait = 1;
+//         rr_skipped_callsite_location = RR_CALLSITE_MAIN_LOOP_WAIT;
+//     }
+// #endif
 }
 
 void rr_end_main_loop_wait(void) {
-#ifdef CONFIG_SOFTMMU
-    if (rr_in_record()) {
-        rr_record_in_main_loop_wait = 0;
-        // Check if DMA-mapped regions have changed
-        rr_tracked_mem_regions_record();
-    }
-#endif
+// #ifdef CONFIG_SOFTMMU
+//     if (rr_in_record()) {
+//         rr_record_in_main_loop_wait = 0;
+//         // Check if DMA-mapped regions have changed
+//         rr_tracked_mem_regions_record();
+//     }
+// #endif
 }
 
 #ifdef CONFIG_SOFTMMU

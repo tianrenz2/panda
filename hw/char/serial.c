@@ -246,23 +246,23 @@ static void serial_xmit(SerialState *s)
 
             if (s->fcr & UART_FCR_FE) {
                 assert(!fifo8_is_empty(&s->xmit_fifo));
-                uintptr_t fifo_addr =
-                    (uintptr_t)&s->xmit_fifo.data[s->xmit_fifo.head];
+                // uintptr_t fifo_addr =
+                //     (uintptr_t)&s->xmit_fifo.data[s->xmit_fifo.head];
                 s->tsr = fifo8_pop(&s->xmit_fifo);
-                if (rr_in_record()) {
-                    rr_record_serial_send(RR_CALLSITE_SERIAL_SEND, fifo_addr,
-                                          s->tsr);
-                }
+                // if (rr_in_record()) {
+                //     rr_record_serial_send(RR_CALLSITE_SERIAL_SEND, fifo_addr,
+                //                           s->tsr);
+                // }
                 if (!s->xmit_fifo.num) {
                     s->lsr |= UART_LSR_THRE;
                 }
             } else {
                 s->tsr = s->thr;
                 s->lsr |= UART_LSR_THRE;
-                if (rr_in_record()) {
-                    rr_record_serial_send(RR_CALLSITE_SERIAL_SEND,
-                                          (uintptr_t)&s->thr, s->tsr);
-                }
+                // if (rr_in_record()) {
+                //     rr_record_serial_send(RR_CALLSITE_SERIAL_SEND,
+                //                           (uintptr_t)&s->thr, s->tsr);
+                // }
             }
             if ((s->lsr & UART_LSR_THRE) && !s->thr_ipending) {
                 s->thr_ipending = 1;
@@ -339,22 +339,22 @@ static void serial_ioport_write(void *opaque, hwaddr addr, uint64_t val,
             serial_update_parameters(s);
         } else {
             s->thr = (uint8_t) val;
-            uintptr_t iob_addr = (uintptr_t)&s->thr;
+            // uintptr_t iob_addr = (uintptr_t)&s->thr;
             if(s->fcr & UART_FCR_FE) {
                 /* xmit overruns overwrite data, so make space if needed */
                 if (fifo8_is_full(&s->xmit_fifo)) {
                     fifo8_pop(&s->xmit_fifo);
                 }
                 // FIFO is enabled, override the default IO buffer address.
-                iob_addr = (uintptr_t)&s->xmit_fifo
-                               .data[(s->xmit_fifo.head + s->xmit_fifo.num) %
-                                     s->xmit_fifo.capacity];
+                // iob_addr = (uintptr_t)&s->xmit_fifo
+                //                .data[(s->xmit_fifo.head + s->xmit_fifo.num) %
+                //                      s->xmit_fifo.capacity];
                 fifo8_push(&s->xmit_fifo, s->thr);
             }
-            if (rr_in_record()) {
-                rr_record_serial_write(RR_CALLSITE_SERIAL_WRITE, iob_addr,
-                                       s->io.addr, s->thr);
-            }
+            // if (rr_in_record()) {
+            //     rr_record_serial_write(RR_CALLSITE_SERIAL_WRITE, iob_addr,
+            //                            s->io.addr, s->thr);
+            // }
             s->thr_ipending = 0;
             s->lsr &= ~UART_LSR_THRE;
             s->lsr &= ~UART_LSR_TEMT;
@@ -494,15 +494,15 @@ static uint64_t serial_ioport_read(void *opaque, hwaddr addr, unsigned size)
             ret = s->divider & 0xff;
         } else {
             if(s->fcr & UART_FCR_FE) {
-                bool record = rr_in_record() && !fifo8_is_empty(&s->recv_fifo);
-                uintptr_t fifo_addr =
-                    (uintptr_t)&s->recv_fifo.data[s->recv_fifo.head];
+                // bool record = rr_in_record() && !fifo8_is_empty(&s->recv_fifo);
+                // uintptr_t fifo_addr =
+                //     (uintptr_t)&s->recv_fifo.data[s->recv_fifo.head];
                 ret = fifo8_is_empty(&s->recv_fifo) ?
                             0 : fifo8_pop(&s->recv_fifo);
-                if (record) {
-                    rr_record_serial_read(RR_CALLSITE_SERIAL_READ, fifo_addr,
-                                          s->io.addr, ret);
-                }
+                // if (record) {
+                //     rr_record_serial_read(RR_CALLSITE_SERIAL_READ, fifo_addr,
+                //                           s->io.addr, ret);
+                // }
                 if (s->recv_fifo.num == 0) {
                     s->lsr &= ~(UART_LSR_DR | UART_LSR_BI);
                 } else {
@@ -511,10 +511,10 @@ static uint64_t serial_ioport_read(void *opaque, hwaddr addr, unsigned size)
                 s->timeout_ipending = 0;
             } else {
                 ret = s->rbr;
-                if (rr_in_record()) {
-                    rr_record_serial_read(RR_CALLSITE_SERIAL_READ,
-                                          (uintptr_t)&s->rbr, s->io.addr, ret);
-                }
+                // if (rr_in_record()) {
+                //     rr_record_serial_read(RR_CALLSITE_SERIAL_READ,
+                //                           (uintptr_t)&s->rbr, s->io.addr, ret);
+                // }
                 s->lsr &= ~(UART_LSR_DR | UART_LSR_BI);
             }
             serial_update_irq(s);
@@ -633,16 +633,16 @@ static void serial_receive1(void *opaque, const uint8_t *buf, int size)
     if(s->fcr & UART_FCR_FE) {
         int i;
         for (i = 0; i < size; i++) {
-            uintptr_t fifo_addr =
-                (uintptr_t)&s->recv_fifo
-                    .data[(s->recv_fifo.head + s->recv_fifo.num) %
-                          s->recv_fifo.capacity];
+            // uintptr_t fifo_addr =
+            //     (uintptr_t)&s->recv_fifo
+            //         .data[(s->recv_fifo.head + s->recv_fifo.num) %
+            //               s->recv_fifo.capacity];
 
             recv_fifo_put(s, buf[i]);
-            if (rr_in_record()) {
-                rr_record_serial_receive(RR_CALLSITE_SERIAL_RECEIVE, fifo_addr,
-                                         buf[i]);
-            }
+            // if (rr_in_record()) {
+            //     rr_record_serial_receive(RR_CALLSITE_SERIAL_RECEIVE, fifo_addr,
+            //                              buf[i]);
+            // }
         }
         s->lsr |= UART_LSR_DR;
         /* call the timeout receive callback in 4 char transmit time */
@@ -651,10 +651,10 @@ static void serial_receive1(void *opaque, const uint8_t *buf, int size)
         if (s->lsr & UART_LSR_DR)
             s->lsr |= UART_LSR_OE;
         s->rbr = buf[0];
-        if (rr_in_record()) {
-            rr_record_serial_receive(RR_CALLSITE_SERIAL_RECEIVE,
-                                     (uintptr_t)&s->rbr, buf[0]);
-        }
+        // if (rr_in_record()) {
+        //     rr_record_serial_receive(RR_CALLSITE_SERIAL_RECEIVE,
+        //                              (uintptr_t)&s->rbr, buf[0]);
+        // }
         s->lsr |= UART_LSR_DR;
     }
     serial_update_irq(s);

@@ -8576,14 +8576,14 @@ generate_debug:
            If current instruction already crossed the bound - it's ok,
            because an exception hasn't stopped this code.
          */
-        if (((tb->cflags & CF_USE_ICOUNT) || rr_in_record() || rr_in_replay())
-            && ((pc_ptr & TARGET_PAGE_MASK)
-                != ((pc_ptr + TARGET_MAX_INSN_SIZE - 1) & TARGET_PAGE_MASK)
-                || (pc_ptr & ~TARGET_PAGE_MASK) == 0)) {
-            gen_jmp_im(pc_ptr - dc->cs_base);
-            gen_eob(dc);
-            break;
-        }
+        // if (((tb->cflags & CF_USE_ICOUNT) || rr_in_record() || rr_in_replay())
+        //     && ((pc_ptr & TARGET_PAGE_MASK)
+        //         != ((pc_ptr + TARGET_MAX_INSN_SIZE - 1) & TARGET_PAGE_MASK)
+        //         || (pc_ptr & ~TARGET_PAGE_MASK) == 0)) {
+        //     gen_jmp_im(pc_ptr - dc->cs_base);
+        //     gen_eob(dc);
+        //     break;
+        // }
         /* if too long translation, stop generation too */
         if (tcg_op_buf_full() ||
             (pc_ptr - pc_start) >= (TARGET_PAGE_SIZE - 32) ||

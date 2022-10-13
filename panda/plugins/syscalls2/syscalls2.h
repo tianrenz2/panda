@@ -1,5 +1,8 @@
 #pragma once
 #include <map>
+
+#include "syscalls2_info.h"
+
 typedef struct CPUState CPUState;
 typedef struct syscall_ctx syscall_ctx_t;
 typedef std::map<std::pair<target_ptr_t, target_ptr_t>, syscall_ctx_t> context_map_t;

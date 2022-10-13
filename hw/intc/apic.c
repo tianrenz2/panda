@@ -74,7 +74,9 @@ static int get_highest_priority_int(uint32_t *tab)
     int i;
     for (i = 7; i >= 0; i--) {
         if (tab[i] != 0) {
-            return i * 32 + apic_fls_bit(tab[i]);
+            int fit = apic_fls_bit(tab[i]);
+
+            return i * 32 + fit;
         }
     }
     return -1;

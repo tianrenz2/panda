@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "panda/plugin.h"
 #include "panda/plugin_plugin.h"
 
@@ -104,6 +106,8 @@ void syscall_enter_switch_linux_x64(CPUState *cpu, target_ptr_t pc, int static_c
 					PPP_CHECK_CB(on_sys_close_return)))) {
 			memcpy(ctx.args[0], &arg0, sizeof(uint32_t));
 		}
+		std::cout << "close called " << arg0 << std::endl;
+
 		PPP_RUN_CB(on_sys_close_enter, cpu, pc, arg0);
 	}; break;
 	// 4 long sys_newstat ['const char __user *filename', 'struct stat __user *statbuf']
@@ -4915,6 +4919,8 @@ void syscall_enter_switch_linux_x64(CPUState *cpu, target_ptr_t pc, int static_c
 
 		running_syscalls[std::make_pair(ctx.retaddr, ctx.asid)] = ctx;
 	}
+	if (rr_in_record())
+		kernel_rr_record_event(cpu, pc, ctx.no, KERNEL_INPUT_TYPE_SYSCALL, &ctx);
 #endif
 }
 

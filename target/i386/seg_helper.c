@@ -26,6 +26,7 @@
 #include "exec/cpu_ldst.h"
 #include "exec/log.h"
 
+#include "panda/plugin.h"
 #include "panda/callbacks/cb-support.h"
 
 #ifdef CONFIG_SOFTMMU
@@ -1320,6 +1321,23 @@ void x86_cpu_do_interrupt(CPUState *cs)
 #endif
 }
 
+static void handle_hw_interrupt(CPUState *cs, int intno) {
+    switch (intno) {
+        case 0 ... 19:
+            printf("Non-maskable Interrupt\n");
+            break;
+        case 32 ... 238:
+            kernel_rr_record_event(cs, 0, intno, KERNEL_INPUT_TYPE_INTERRUPT, NULL);
+            break;
+        // case 239:
+        //     printf("APIC Timer Interrupt\n");
+        //     break;
+        case 240:
+            printf("APIC Thermal Timer Interrupt\n");
+            break;
+    }
+}
+
 void do_interrupt_x86_hardirq(CPUX86State *env, int intno, int is_hw)
 {
     do_interrupt_all(x86_env_get_cpu(env), intno, 0, 0, 0, is_hw);
@@ -1382,6 +1400,9 @@ bool x86_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
             // panda callback might swallow interrupt or exception
             intno = panda_callbacks_before_handle_interrupt(cs, intno);
 
+            if (rr_in_record()) {
+                handle_hw_interrupt(cs, intno);
+            }
             qemu_log_mask(CPU_LOG_TB_IN_ASM,
                           "Servicing hardware INT=0x%02x\n", intno);
             do_interrupt_x86_hardirq(env, intno, 1);

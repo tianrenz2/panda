@@ -1513,6 +1513,7 @@ void rr_do_end_record(void)
 	g_free(rr_control.snapshot);
 	rr_control.snapshot = NULL;
     }
+    flush_event_records();
 
     // turn off logging
     rr_control.mode = RR_OFF;

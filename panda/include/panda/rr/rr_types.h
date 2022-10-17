@@ -46,7 +46,7 @@ typedef enum { RR_MEM_IO, RR_MEM_RAM, RR_MEM_UNKNOWN } RR_mem_type;
  * @brief Record/Replay modes. Also used to request transitions from one
  * mode to another.
  */
-typedef enum { RR_NOCHANGE=-1, RR_OFF=0, RR_RECORD, RR_REPLAY } RR_mode;
+typedef enum { RR_NOCHANGE=-1, RR_OFF=0, RR_RECORD, RR_REPLAY, RR_KERNEL_REPLAY } RR_mode;
 
 /** @brief Return codes for functions controlling record/replay. */
 typedef enum { 

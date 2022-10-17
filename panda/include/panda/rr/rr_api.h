@@ -43,6 +43,7 @@ int panda_replay_end(void);
 // END_PYPANDA_NEEDS_THIS -- do not delete this comment!
 
 static inline bool rr_in_replay(void) { return rr_control.mode == RR_REPLAY; }
+static inline bool rr_kernel_in_replay(void) { return rr_control.mode == RR_KERNEL_REPLAY; }
 static inline bool rr_in_record(void) { return rr_control.mode == RR_RECORD; }
 static inline bool rr_replay_requested(void) { return rr_control.next == RR_REPLAY; }
 static inline bool rr_record_requested(void) { return rr_control.next == RR_RECORD; }

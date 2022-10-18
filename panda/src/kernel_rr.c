@@ -2,6 +2,12 @@
 
 #include "panda/plugins/syscalls2/syscalls_ext_typedefs.h"
 
+#include "panda/rr/kernel_rr.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+
 const char *kernel_rr_log = "kernel_rr.log";
 
 event_node *syscall_head;
@@ -21,14 +27,27 @@ static void free_all_nodes(void) {
 	}
 }
 
+void load_kernel_log(void) {
+	FILE *fptr = fopen(kernel_rr_log, "r");
+
+	struct event_node loaded_node;
+
+	while(fread(&loaded_node, sizeof(struct event_node), 1, fptr)) {
+		printf("%d %ld\n", loaded_node.id_no, loaded_node.args[0]);
+	}
+	
+}
+
+static void persist_bin(event_node *node, FILE *fptr) {
+	fwrite (node, sizeof(struct event_node), 1, fptr);
+}
+
 static void persist_syscalls(void) {
 	FILE *fptr = fopen(kernel_rr_log, "a");
 	event_node *cur= syscall_head;
-    char buffer[10];
 
 	while (cur != NULL) {
-        sprintf(buffer, "%d-%d\n", cur->type, cur->id_no);
-        fputs(buffer, fptr);
+		persist_bin(cur, fptr);
 		cur = cur->next;
 	}
 
@@ -50,13 +69,18 @@ void kernel_rr_record_event(CPUState *cpu, target_ptr_t pc, int id_no, int type,
 	node->id_no = id_no;
 	node->next = NULL;
     node->type = type;
+	syscall_ctx_t *ctxp = (syscall_ctx_t *)ctx;
 
-	if (type == KERNEL_INPUT_TYPE_SYSCALL) {
-		if (id_no == 39) {
-			syscall_ctx_t *ctx1 = (syscall_ctx_t *)ctx;
-			printf("getpid called: Arg: %ud %ud\n", *ctx1->args[0], *ctx1->args[1]);
-		}
+	if (type != KERNEL_INPUT_TYPE_SYSCALL) {
+		return;
 	}
+
+	memcpy(&(node->args[0]), &(ctxp->args[0]), sizeof(uint32_t));
+	memcpy(&(node->args[1]), &(ctxp->args[1]), sizeof(uint32_t));
+	memcpy(&(node->args[2]), &(ctxp->args[2]), sizeof(uint32_t));
+	memcpy(&(node->args[3]), &(ctxp->args[3]), sizeof(uint32_t));
+	memcpy(&(node->args[4]), &(ctxp->args[4]), sizeof(uint32_t));
+	memcpy(&(node->args[5]), &(ctxp->args[5]), sizeof(uint32_t));
 
 	if (cached_syscall_num == max_cached_syscall_record)
 		flush_event_records();

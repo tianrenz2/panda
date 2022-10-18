@@ -34,6 +34,7 @@
  * All contributors are listed in S2E-AUTHORS file.
  *
  */
+#include "panda/rr/kernel_rr.h"
 
 #include "qemu/osdep.h"
 #include "qemu-version.h"
@@ -4733,6 +4734,8 @@ int main_aux(int argc, char **argv, char **envp, PandaMainMode pmm)
     }
 
     colo_info_init();
+
+    // load_kernel_log();
 
     if (net_init_clients() < 0) {
         exit(1);

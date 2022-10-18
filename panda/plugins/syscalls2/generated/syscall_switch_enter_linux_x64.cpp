@@ -106,7 +106,7 @@ void syscall_enter_switch_linux_x64(CPUState *cpu, target_ptr_t pc, int static_c
 					PPP_CHECK_CB(on_sys_close_return)))) {
 			memcpy(ctx.args[0], &arg0, sizeof(uint32_t));
 		}
-		std::cout << "close called " << arg0 << std::endl;
+		// std::cout << "close called " << arg0 << std::endl;
 
 		PPP_RUN_CB(on_sys_close_enter, cpu, pc, arg0);
 	}; break;

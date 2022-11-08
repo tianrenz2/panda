@@ -71,6 +71,8 @@ void rr_mem_region_change_record(hwaddr start_addr, uint64_t size,
                                  const char *name, RR_mem_type mtype, bool added);
 void rr_mem_region_transaction_record(bool begin);
 
+void rr_eliminate_outdate_items(uint64_t current_inst);
+
 // mz using uint8_t for kind and callsite_loc to control space - enums default
 // to int.
 // mz NOTE: make sure RR_callsite_id has at most 255 members
@@ -80,6 +82,7 @@ typedef struct {
     uint64_t file_pos;
     RR_log_entry_kind kind;
     RR_callsite_id callsite_loc; // mz This is used for another sanity check
+    int cpl;
 } RR_header;
 
 // mz generic args
@@ -154,6 +157,17 @@ static inline uint64_t rr_get_guest_instr_count(void) {
     return first_cpu->rr_guest_instr_count;
 }
 
+static inline void rr_dec_guest_instr_count(void) {
+    assert(first_cpu);
+    first_cpu->rr_guest_instr_count--;
+}
+
+static inline void rr_set_guest_instr_count(uint64_t inst_num) {
+    assert(first_cpu);
+    first_cpu->rr_guest_instr_count = inst_num;
+}
+
+
 //mz program execution state
 static inline RR_prog_point rr_prog_point(void) {
     RR_prog_point ret = {0};
@@ -208,9 +222,94 @@ static inline uint64_t rr_num_instr_before_next_interrupt(void) {
     }
 }
 
+static inline uint64_t rr_num_instr_before_next_log_entry(void) {
+    RR_log_entry *head = rr_get_queue_head();
+    if (!head) rr_fill_queue();
+
+    return head->header.prog_point.guest_instr_count - rr_get_guest_instr_count();
+}
+
+static inline void print_head_tail(void) {
+    printf("head: %ld ", rr_get_queue_head()->header.prog_point.guest_instr_count);
+    printf("tail: %ld\n", rr_queue_tail->header.prog_point.guest_instr_count);
+}
+
+static inline const char* rr_get_next_interrupt_kind(void) {
+    if (!rr_queue_tail) rr_fill_queue();
+    if (!rr_queue_tail) return NULL;
+
+    RR_header last_header = rr_queue_tail->header;
+    return get_log_entry_kind_string(last_header.kind);
+}
+
+static inline const char* rr_get_next_interrupt_callsite(void) {
+    if (!rr_queue_tail) rr_fill_queue();
+    if (!rr_queue_tail) return NULL;
+
+    RR_header last_header = rr_queue_tail->header;
+    return get_callsite_string(last_header.callsite_loc);
+}
+
+
 uint32_t rr_checksum_memory(void);
 uint32_t rr_checksum_regs(void);
 
 bool rr_queue_empty(void);
 
+
+typedef struct event_node {
+    int type;
+    struct event_node *next;
+    target_ulong args[CPU_NB_REGS];
+    uint64_t inst_num_before;
+    int32_t exception_index;
+} event_node;
+
+typedef struct load_block {
+    uint64_t inst_num_before;
+    struct load_entry *head;
+    struct load_block *next;
+    bool feed;
+    int entry_num;
+} load_block;
+
+typedef struct load_entry {
+    int target_reg;
+    target_ulong target_val;
+    struct load_entry *next;
+} load_entry;
+
+
+event_node* fetch_next_syscall(void);
+
+void kernel_record_ld_start(CPUX86State *env, int target_reg);
+void kernel_record_ld_end(CPUState *env);
+void kernel_replay_lb(CPUX86State *env);
+void kernel_record_ld_start_mark_inst_cnt(uint64_t inst_cnt);
+
+void flush_ld_blk_records(void);
+void load_kernel_load_log(void);
+
+uint64_t rr_inst_num_before_next_syscall(void);
+event_node* get_next_syscall(void);
+
+void print_regs(CPUX86State *env);
+
+bool rr_in_cfu(void);
+void rr_cfu_start(void);
+void rr_cfu_end(void);
+void rr_int_during_cfu_start(void);
+void rr_int_during_cfu_end(void);
+bool rr_in_int_during_cfu(void);
+
+void rr_eliminate_non_interrupt_items(void);
+void rr_eliminate_userspace_items(void);
+void rr_pop_front_item(void);
+void rr_clear_low_prviledge_entry(void);
+
+void kernel_rr_record_event_syscall(CPUX86State *env);
+void kernel_rr_record_event_kernel_load(CPUX86State *env, int target_reg);
+void kernel_rr_record_event_exception(CPUState *cs, CPUX86State *env);
+void kernel_rr_replay_event_syscall(CPUX86State *env, event_node *node);
+void kernel_rr_replay_event_exception(CPUState *cs, CPUX86State *env, event_node *node);
 #endif

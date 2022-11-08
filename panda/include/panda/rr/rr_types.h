@@ -63,8 +63,8 @@ typedef struct {
     volatile sig_atomic_t next;
     char *name;
     char *snapshot;
+    bool kernel_replay;
 } rr_control_t;
 
 /** @brief Global encapsulating requests to switch between PANDA modes. */
 extern rr_control_t rr_control;
-

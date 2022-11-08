@@ -34,8 +34,6 @@
  * All contributors are listed in S2E-AUTHORS file.
  *
  */
-#include "panda/rr/kernel_rr.h"
-
 #include "qemu/osdep.h"
 #include "qemu-version.h"
 #include "qemu/cutils.h"
@@ -167,6 +165,7 @@ bool panda_aborted = false; // Set if panda was terminated abnormally (e.g., Ctr
 
 char *panda_snap_name = NULL;
 const char* replay_name = NULL;
+const char* kernel_replay_name = NULL;
 
 #include "panda/debug.h"
 #include "panda/rr/rr_log_all.h"
@@ -4240,6 +4239,10 @@ int main_aux(int argc, char **argv, char **envp, PandaMainMode pmm)
                 display_type = DT_NONE;
                 replay_name = optarg;
                 break;
+            case QEMU_OPTION_kernel_replay:
+                display_type = DT_NONE;
+                kernel_replay_name = optarg;
+                break;
             case QEMU_OPTION_pandalog:
                 pandalog = 1;
                 pandalog_cc_init_write(optarg);
@@ -4735,8 +4738,6 @@ int main_aux(int argc, char **argv, char **envp, PandaMainMode pmm)
 
     colo_info_init();
 
-    // load_kernel_log();
-
     if (net_init_clients() < 0) {
         exit(1);
     }
@@ -4981,7 +4982,12 @@ int main_aux(int argc, char **argv, char **envp, PandaMainMode pmm)
     qemu_system_reset(VMRESET_SILENT);
     register_global_state();
 
+    rr_control.kernel_replay = false;
+
     if (replay_name) {
+        if (kernel_replay_name) {
+            rr_control.kernel_replay = true;
+        }
         // rr: check for begin/end record/replay
         sigset_t blockset, oldset = {0};
 

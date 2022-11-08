@@ -24,6 +24,8 @@
 #include "exec/exec-all.h"
 #include "exec/cpu_ldst.h"
 
+#include "panda/rr/rr_log.h"
+
 /* Secure Virtual Machine helpers */
 
 #if defined(CONFIG_USER_ONLY)
@@ -352,8 +354,33 @@ void helper_vmrun(CPUX86State *env, int aflag, int next_eip_addend)
 
 void helper_vmmcall(CPUX86State *env)
 {
-    cpu_svm_check_intercept_param(env, SVM_EXIT_VMMCALL, 0, GETPC());
-    raise_exception(env, EXCP06_ILLOP);
+    if (!rr_in_record() && !rr_in_replay())
+        return;
+
+    if (!rr_in_cfu()) {
+        if (rr_in_replay()) {
+            qemu_log_lock();
+            qemu_log("copy from user start");
+            qemu_log("\n");
+            qemu_log_unlock();
+        }
+        rr_cfu_start();
+    } else {
+        if (rr_in_replay()) {
+            qemu_log_lock();
+            qemu_log("copy from user end");
+            qemu_log("\n");
+            qemu_log_unlock();
+        }
+        rr_cfu_end();
+    }
+    // qemu_log_lock();
+    // qemu_log("copy from user");
+    // qemu_log("\n");
+    // qemu_log_unlock();
+    // cpu_svm_check_intercept_param(env, SVM_EXIT_VMMCALL, 0, GETPC());
+    // raise_exception(env, EXCP06_ILLOP);
+    // printf("vmmcall triggered\n");
 }
 
 void helper_vmload(CPUX86State *env, int aflag)

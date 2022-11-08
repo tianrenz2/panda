@@ -404,6 +404,8 @@ struct TranslationBlock {
      */
     char llvm_fn_name[64];
 #endif
+    bool empty_block;
+    bool exception_signaled;
 };
 
 void tb_free(TranslationBlock *tb);

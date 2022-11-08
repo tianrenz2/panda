@@ -4919,8 +4919,8 @@ void syscall_enter_switch_linux_x64(CPUState *cpu, target_ptr_t pc, int static_c
 
 		running_syscalls[std::make_pair(ctx.retaddr, ctx.asid)] = ctx;
 	}
-	if (rr_in_record())
-		kernel_rr_record_event(cpu, pc, ctx.no, KERNEL_INPUT_TYPE_SYSCALL, &ctx);
+	// if (rr_in_record())
+	// 	kernel_rr_record_event(cpu, pc, ctx.no, KERNEL_INPUT_TYPE_SYSCALL, &ctx);
 #endif
 }
 

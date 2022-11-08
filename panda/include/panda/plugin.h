@@ -171,18 +171,10 @@ bool panda_is_callback_enabled(void *plugin, panda_cb_type type, panda_cb cb);
 #define KERNEL_INPUT_TYPE_SYSCALL 0
 #define KERNEL_INPUT_TYPE_INTERRUPT 1
 
-void kernel_rr_record_event(CPUState *cpu, target_ptr_t pc, int id_no, int type, void* ctx);
+// void kernel_rr_record_event(CPUState *cpu, target_ptr_t pc, int id_no, int type, void* ctx);
 void flush_event_records(void);
 
 #define GLOBAL_MAX_SYSCALL_ARG_SIZE sizeof(uint64_t)
-
-typedef struct event_node {
-    int type;
-    int id_no;
-    struct event_node *next;
-    target_ulong args[17];
-} event_node;
-
 
 #ifdef __cplusplus
 }

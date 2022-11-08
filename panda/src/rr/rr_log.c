@@ -57,13 +57,17 @@
 #include "panda/callbacks/cb-support.h"
 #include "exec/gdbstub.h"
 #include "sysemu/cpus.h"
+#include "panda/rr/kernel_rr.h"
 
 //#define RR_DEBUG
 
 /******************************************************************************************/
 /* GLOBALS */
 /******************************************************************************************/
+// static uint64_t rr_remove_unpriviledged_entry(void);
+
 // record/replay state
+bool kernel_record = true;
 rr_control_t rr_control = {.mode = RR_OFF, .next = RR_NOCHANGE};
 
 // mz FIFO queue of log entries read from the log file
@@ -115,7 +119,9 @@ unsigned rr_next_progress = 1;
 /* UTILITIES */
 /******************************************************************************************/
 
-RR_log_entry* rr_get_queue_head(void) { return rr_queue_head; }
+RR_log_entry* rr_get_queue_head(void) {
+    return rr_queue_head;
+}
 
 // Check if replay is really finished. Conditions:
 // 1) The log is empty
@@ -154,6 +160,7 @@ void rr_spit_prog_point(RR_prog_point pp) { rr_spit_prog_point_fp(pp); }
 
 static void rr_spit_log_entry(RR_log_entry item)
 {
+    printf("Recorded CPL: %d\n", item.header.cpl);
     rr_spit_prog_point(item.header.prog_point);
     switch (item.header.kind) {
     case RR_INPUT_1:
@@ -217,7 +224,8 @@ void rr_signal_disagreement(RR_prog_point current, RR_prog_point recorded)
     rr_spit_prog_point(recorded);
     printf("\n");
     if (current.guest_instr_count != recorded.guest_instr_count) {
-        printf(">>> guest instruction counts disagree\n");
+        printf(">>> guest instruction counts disagree, guest:%ld, recorded:%ld\n",
+               current.guest_instr_count, recorded.guest_instr_count);
     }
 }
 
@@ -270,9 +278,25 @@ static inline void rr_write_item(RR_log_entry item)
     if (!rr_in_record()) return;
     rr_assert(rr_nondet_log != NULL);
 
+    // if (cpl != 0 && kernel_record) {
+    //     // if (item.header.kind != RR_INTERRUPT_REQUEST ||
+    //     //     (item.header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_BEFORE &&
+    //     //      item.header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_INTNO))
+    //     // {
+    //     //     printf("skip record\n");
+    //     //     return;
+    //     // }
+    //     printf("skip record\n");
+    //     return;
+    // }
+
 #define RR_WRITE_ITEM(field) rr_fwrite(&(field), sizeof(field), 1)
     // keep replay format the same.
     RR_WRITE_ITEM(item.header.prog_point.guest_instr_count);
+
+
+
+    RR_WRITE_ITEM(item.header.cpl);
     rr_fwrite(&(item.header.kind), 1, 1);
     rr_fwrite(&(item.header.callsite_loc), 1, 1);
 
@@ -368,10 +392,14 @@ static inline void rr_write_item(RR_log_entry item)
 
 static inline RR_header rr_header(RR_log_entry_kind kind,
                                   RR_callsite_id call_site) {
+    int cpl = get_cpu_cpl();
+    assert(cpl != -1);
+
     return (RR_header) {
         .kind = kind,
         .callsite_loc = call_site,
-        .prog_point = rr_prog_point()
+        .prog_point = rr_prog_point(),
+        .cpl = cpl,
     };
 }
 
@@ -760,6 +788,7 @@ static RR_log_entry *rr_read_item(void) {
 #define RR_READ_ITEM(field) rr_fread(&(field), sizeof(field), 1)
     // mz read header
     RR_READ_ITEM(item->header.prog_point.guest_instr_count);
+    RR_READ_ITEM(item->header.cpl);
     rr_fread(&(item->header.kind), 1, 1);
     rr_fread(&(item->header.callsite_loc), 1, 1);
 
@@ -898,11 +927,59 @@ void rr_fill_queue(void) {
             break;
         }
     }
+
+    // if (rr_kernel_in_replay()){
+    //     printf("Removing entries\n");
+    //     printf("Removed %lld entries\n", num_entries);
+    //     // uint64_t removed = rr_remove_unpriviledged_entry();
+    //     // num_entries -= removed;
+    //     // printf("Removed %ld entries, current %lld\n", removed, num_entries);
+    // }
+
     // mz let's gather some stats
     if (num_entries > rr_max_num_queue_entries) {
         rr_max_num_queue_entries = num_entries;
     }
 }
+
+// static uint64_t rr_remove_unpriviledged_entry(void) {
+//     RR_log_entry local_rr_queue[RR_QUEUE_MAX_LEN];
+
+//     int new_index = 0;
+//     uint64_t removed = 0;
+
+//     for (int i=0; i < RR_QUEUE_MAX_LEN; i++) {
+//         RR_log_entry head = rr_queue[i];
+//         bool put = false;
+        
+//         if (head.header.cpl == 0) {
+//             put = true;
+//         } else {
+//             if (head.header.kind == RR_INTERRUPT_REQUEST &&
+//                 (head.header.callsite_loc == RR_CALLSITE_CPU_HANDLE_INTERRUPT_BEFORE ||
+//                  head.header.callsite_loc == RR_CALLSITE_CPU_HANDLE_INTERRUPT_INTNO))
+//             {
+//                 put = true;
+//             } else {
+//                 removed++;
+//             }
+//         }   
+
+//         if (put) {
+//             local_rr_queue[new_index] = head;
+//             new_index++;
+//         }
+//     }
+
+//     memcpy(rr_queue, local_rr_queue, new_index);
+
+//     rr_queue_head = &rr_queue[0];
+//     rr_queue_tail = &rr_queue[new_index - 1];
+
+//     rr_queue_end = &rr_queue[RR_QUEUE_MAX_LEN];
+
+//     return removed;
+// }
 
 // Makes sure queue is full and returns fron entry.
 // after using, make sure to rr_queue_pop_front to consume.
@@ -948,6 +1025,26 @@ static inline RR_log_entry* get_next_entry_checked(RR_log_entry_kind kind,
     return entry;
 }
 
+void rr_eliminate_non_interrupt_items(void) {
+    RR_log_entry* entry = get_next_entry();
+
+    while (entry->header.kind != RR_INTERRUPT_REQUEST) {
+        rr_queue_pop_front();
+        entry = get_next_entry();
+    }
+}
+
+
+void rr_eliminate_outdate_items(uint64_t current_inst) {
+    RR_log_entry* entry;
+    entry = get_next_entry();
+
+    while (entry->header.prog_point.guest_instr_count < current_inst) {
+        rr_queue_pop_front();
+        entry = get_next_entry();
+    }
+}
+
 // mz replay 1-byte input to the CPU
 void rr_replay_input_1(RR_callsite_id call_site, uint8_t* data) {
     RR_log_entry* current_item = get_next_entry_checked(RR_INPUT_1, call_site, true);
@@ -978,6 +1075,7 @@ void rr_replay_input_8(RR_callsite_id call_site, uint64_t* data) {
     rr_assert(current_item);
     *data = current_item->variant.input_8;
     rr_queue_pop_front();
+    printf("Replayed %ld %s\n", current_item->header.prog_point.guest_instr_count, get_callsite_string(call_site));
 }
 
 /**
@@ -992,6 +1090,7 @@ void rr_replay_interrupt_request(RR_callsite_id call_site,
     if (current_item != NULL) {
         panda_current_interrupt_request = current_item->variant.interrupt_request;
         rr_queue_pop_front();
+        printf("Replayed %ld %s\n", current_item->header.prog_point.guest_instr_count, get_callsite_string(call_site));
     }
     *interrupt_request = panda_current_interrupt_request;
 }
@@ -1036,6 +1135,13 @@ bool rr_replay_pending_interrupts(RR_callsite_id callsite_id, uint32_t* pending_
 
     rr_queue_pop_front();
     return true;
+}
+
+void rr_pop_front_item(void) {
+    uint64_t inst_before = rr_queue_tail->header.prog_point.guest_instr_count;
+
+    while (get_next_entry()->header.prog_point.guest_instr_count == inst_before)
+        rr_queue_pop_front();
 }
 
 bool rr_replay_intno(uint32_t *intno) {
@@ -1470,6 +1576,7 @@ int rr_do_begin_record(const char* file_name_full, CPUState* cpu_state)
     g_free(rr_name_base);
     // set global to turn on recording
     rr_control.mode = RR_RECORD;
+    qemu_log("RR begin record\n");
     return snapshot_ret;
 #endif
 }
@@ -1514,10 +1621,88 @@ void rr_do_end_record(void)
 	rr_control.snapshot = NULL;
     }
     flush_event_records();
+    flush_ld_blk_records();
 
     // turn off logging
     rr_control.mode = RR_OFF;
 #endif
+}
+
+void rr_clear_low_prviledge_entry(void) {
+    RR_log_entry* entry = get_next_entry();
+
+    while (entry->header.cpl != 0 && (entry->header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_BEFORE && entry->header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_AFTER &&  entry->header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_INTNO)) {
+        printf("removed entry: %s\n", get_callsite_string(entry->header.callsite_loc));
+        rr_queue_pop_front();
+        entry = get_next_entry();
+    }
+}
+
+
+int rr_do_begin_kernel_replay(const char* file_name_full, CPUState* cpu_state)
+{
+#ifdef CONFIG_SOFTMMU
+    char name_buf[1024];
+    // decompose file_name_base into path & file.
+    char* rr_path = g_strdup(file_name_full);
+    char* rr_name = g_strdup(file_name_full);
+    __attribute__((unused)) int snapshot_ret;
+
+    vm_stop(RUN_STATE_PAUSED); // Stop execution of the CPU thread while the replay is being set up
+    rr_path = dirname(rr_path);
+    rr_name = basename(rr_name);
+    rr_replay_complete = false;
+
+    // When we start a replay, re-initialize state
+    // so we can do this multiple times
+    rr_next_progress = 1;
+
+    if (rr_debug_whisper()) {
+        qemu_log("Begin vm replay for file_name_full = %s\n", file_name_full);
+        qemu_log("path = [%s]  file_name_base = [%s]\n", rr_path, rr_name);
+    }
+    // first retrieve snapshot
+    rr_get_snapshot_file_name(rr_name, rr_path, name_buf, sizeof(name_buf));
+    if (rr_debug_whisper()) {
+        qemu_log("reading snapshot:\t%s\n", name_buf);
+    }
+    printf("loading snapshot\n");
+    QIOChannelFile* ioc =
+        qio_channel_file_new_path(name_buf, O_RDONLY, 0, NULL);
+    if (ioc == NULL) {
+        printf ("... snapshot file doesn't exist?\n");
+        abort();
+    }
+    QEMUFile* snp = qemu_fopen_channel_input(QIO_CHANNEL(ioc));
+
+    // qemu_system_reset(VMRESET_SILENT);
+    // MigrationIncomingState* mis = migration_incoming_get_current();
+    // mis->from_src_file = snp;
+    snapshot_ret = qemu_loadvm_state(snp);
+    qemu_fclose(snp);
+    // migration_incoming_state_destroy();
+
+    if (snapshot_ret < 0) {
+        fprintf(stderr, "Failed to load vmstate\n");
+        return snapshot_ret;
+    }
+    printf("... done.\n");
+
+    // reset record/replay counters and flags
+    // rr_reset_state(cpu_state);
+    // // set global to turn on replay
+    rr_control.mode = RR_KERNEL_REPLAY;
+
+    // // Resume execution of the CPU thread when using PANDA as a library
+    // // note that this means library-mode consumers can't start a replay `-s -S` to
+    // // get a stopped guest that will only be started via an attached GDB
+    if (panda_get_library_mode()) {
+        vm_start();
+    }
+
+    return 0; // snapshot_ret;
+#endif
+
 }
 
 // file_name_full should be full path to the record/replay log
@@ -1599,6 +1784,11 @@ int rr_do_begin_replay(const char* file_name_full, CPUState* cpu_state)
     // get a stopped guest that will only be started via an attached GDB
     if (panda_get_library_mode()) {
         vm_start();
+    }
+
+    if (rr_kernel_in_replay()) {
+        load_kernel_log();
+        load_kernel_load_log();
     }
 
     return 0; // snapshot_ret;

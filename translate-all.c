@@ -1339,6 +1339,7 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     tb->cs_base = cs_base;
     tb->flags = flags;
     tb->cflags = cflags;
+    tb->empty_block = false;
 
 #ifdef CONFIG_PROFILER
     tcg_ctx.tb_count1++; /* includes aborted translations because of
@@ -1351,6 +1352,10 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     tcg_ctx.cpu = ENV_GET_CPU(env);
     gen_intermediate_code(env, tb);
     tcg_ctx.cpu = NULL;
+
+    if (tb->empty_block) {
+        return tb;
+    }
 
     trace_translate_block(tb, tb->pc, tb->tc_ptr);
 

@@ -222,6 +222,9 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
     exitCode = (uint8_t)tb_exit;
     panda_callbacks_after_block_exec(cpu, itb, exitCode);
 
+    if (rr_in_record() && rr_in_cfu() && !rr_in_int_during_cfu())
+        kernel_record_ld_end(cpu);
+
     trace_exec_tb_exit(last_tb, tb_exit);
 
     if (tb_exit > TB_EXIT_IDX1) {
@@ -426,13 +429,22 @@ static inline TranslationBlock *tb_find(CPUState *cpu,
                 /* if no translated code available, then translate it now */
                 tb = tb_gen_code(cpu, pc, cs_base, flags, 0);
                 panda_callbacks_after_block_translate(cpu, tb);
+            } else {
+                // if (rr_in_replay()) {
+                //     printf("Found cached block\n");
+                // }
             }
 
             mmap_unlock();
         }
-
-        /* We add the TB in the virtual pc hash table for the fast lookup */
-        atomic_set(&cpu->tb_jmp_cache[tb_jmp_cache_hash_func(pc)], tb);
+        if (!tb->empty_block) {
+            /* We add the TB in the virtual pc hash table for the fast lookup */
+            atomic_set(&cpu->tb_jmp_cache[tb_jmp_cache_hash_func(pc)], tb);
+        }
+    } else {
+        // if (rr_in_replay()) {
+        //     printf("Found cached block\n");
+        // }
     }
 #ifndef CONFIG_USER_ONLY
     /* We don't take care of direct jumps when address mapping changes in
@@ -819,21 +831,37 @@ int cpu_exec(CPUState *cpu)
         while (likely(!panda_exit_loop)) {
             bool panda_invalidate_tb = false;
             debug_checkpoint(cpu);
-            detect_infinite_loops();
+            // detect_infinite_loops();
             rr_maybe_progress();
 
             /* Replay skipped calls from the I/O thread here. */
-            if (rr_in_replay()) {
+            if (rr_in_replay() && !rr_kernel_in_replay()) {
                 rr_skipped_callsite_location = RR_CALLSITE_MAIN_LOOP_WAIT;
                 rr_replay_skipped_calls();
             }
 
             if (cpu_handle_interrupt(cpu, &last_tb)) {
+                // printf("handled interrupt\n");
                 break;
+            } else {
+                // printf("handled interrupt false\n");
             }
 
             panda_callbacks_before_find_fast();
             TranslationBlock *tb = tb_find(cpu, last_tb, tb_exit);
+            
+            if (tb->empty_block) {
+                if (tb->exception_signaled) {
+                    tb->exception_signaled = false;
+                    break;
+                }
+
+                // if (rr_get_guest_instr_count() == 562121) {
+                //     printf("tag\n");
+                // }
+                continue;
+            }
+
             panda_bb_invalidate_done = panda_callbacks_after_find_fast(
                     cpu, tb, panda_bb_invalidate_done, &panda_invalidate_tb);
         
@@ -847,6 +875,7 @@ int cpu_exec(CPUState *cpu)
 
 #ifdef CONFIG_SOFTMMU
             uint64_t until_interrupt = rr_num_instr_before_next_interrupt();
+            // printf("until_intr: %ld\n", until_interrupt);
             if (panda_invalidate_tb
                     || (rr_in_replay() && until_interrupt > 0
                         && tb->icount > until_interrupt)) {
@@ -870,6 +899,26 @@ int cpu_exec(CPUState *cpu)
                 /* Try to align the host and virtual clocks
                    if the guest is in advance */
                 align_clocks(&sc, cpu);
+
+            // if (rr_in_replay()) {
+            //     qemu_log_lock();
+            //     X86CPU *x86_cpu = X86_CPU(cpu);
+            //     CPUX86State *env = &x86_cpu->env;
+            //     qemu_log("rax:%ld rcx:%ld rdx:%ld, rbx:%ld, rsp:%ld, rbp:%ld, rsi:%ld, rdi:%ld\n",
+            //         env->regs[R_EAX], env->regs[R_ECX],
+            //         env->regs[R_EDX], env->regs[R_EBX],
+            //         env->regs[R_ESP], env->regs[R_EBP],
+            //         env->regs[R_ESI], env->regs[R_EDI]);
+            //     qemu_log_unlock();
+            // }
+
+                // if (rr_get_guest_instr_count() >= 560865) {
+                    // printf("hit the point\n");
+                    // tb_lock();
+                    // tb_phys_invalidate(tb, -1);
+                    // tb_free(tb);
+                    // tb_unlock();
+                // }
             }
         }
     }

@@ -51,6 +51,7 @@ uint8_t rr_replay_finished(void);
 int rr_do_begin_record(const char* name, CPUState* cpu_state);
 void rr_do_end_record(void);
 int rr_do_begin_replay(const char* name, CPUState* cpu_state);
+int rr_do_begin_kernel_replay(const char* file_name_full, CPUState* cpu_state);
 void rr_do_end_replay(int is_error);
 void rr_reset_state(CPUState* cpu_state);
 

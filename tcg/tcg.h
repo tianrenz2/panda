@@ -777,6 +777,15 @@ static inline void *tcg_malloc(int size)
     }
 }
 
+static inline int get_cpu_cpl(void) {
+    CPUState *cpu;
+
+    CPU_FOREACH(cpu) {
+        return x86_cpu_get_cpl(cpu);
+    }
+    return -1;
+}
+
 void tcg_context_init(TCGContext *s);
 void tcg_prologue_init(TCGContext *s);
 void tcg_func_start(TCGContext *s);

@@ -31,6 +31,7 @@
 
 #ifdef CONFIG_SOFTMMU
 #include "panda/rr/rr_log.h"
+#include "panda/rr/kernel_rr.h"
 #endif
 
 //#define DEBUG_PCALL
@@ -990,6 +991,7 @@ void helper_syscall(CPUX86State *env, int next_eip_addend)
 void helper_syscall(CPUX86State *env, int next_eip_addend)
 {
     int selector;
+    // printf("syscall triggered\n");
 
     if (!(env->efer & MSR_EFER_SCE)) {
         raise_exception_err_ra(env, EXCP06_ILLOP, 0, GETPC());
@@ -1000,6 +1002,23 @@ void helper_syscall(CPUX86State *env, int next_eip_addend)
 
         env->regs[R_ECX] = env->eip + next_eip_addend;
         env->regs[11] = cpu_compute_eflags(env);
+
+        if (rr_in_record()) {
+            kernel_rr_record_event_syscall(env);
+        }
+
+        if (rr_kernel_in_replay()) {
+	        event_node* node = fetch_next_syscall();
+            kernel_rr_replay_event_syscall(env, node);
+            rr_dec_guest_instr_count();
+            // printf("trigger syscall, expected pre-inst: %ld, actual: %ld\n", node->inst_num_before, rr_get_guest_instr_count());
+        }
+        // printf("trigger syscall, actual: %ld\n", rr_get_guest_instr_count());
+
+        if(rr_in_replay())
+            printf("replay kernel syscall: %ld, arg1: %ld, arg2: %ld, arg3: %ld, arg4: %ld, arg5: %ld, arg6: %ld, arg7: %ld\n",\
+                    env->regs[R_EAX], env->regs[R_ECX], env->regs[R_EDX], env->regs[R_EBX], env->regs[R_ESP], env->regs[R_EBP],\
+                    env->regs[R_ESI], env->regs[R_EDI]);
 
         code64 = env->hflags & HF_CS64_MASK;
 
@@ -1045,6 +1064,8 @@ void helper_syscall(CPUX86State *env, int next_eip_addend)
 void helper_sysret(CPUX86State *env, int dflag)
 {
     int cpl, selector;
+
+    // printf("sysret triggered\n");
 
     if (!(env->efer & MSR_EFER_SCE)) {
         raise_exception_err_ra(env, EXCP06_ILLOP, 0, GETPC());
@@ -1288,6 +1309,15 @@ static void do_interrupt_all(X86CPU *cpu, int intno, int is_int,
 #endif
 }
 
+
+int x86_cpu_get_cpl(CPUState *cs) {
+    X86CPU *cpu = X86_CPU(cs);
+    CPUX86State *env = &cpu->env;
+
+    return env->hflags & HF_CPL_MASK;
+}
+
+
 void x86_cpu_do_interrupt(CPUState *cs)
 {
     X86CPU *cpu = X86_CPU(cs);
@@ -1295,6 +1325,10 @@ void x86_cpu_do_interrupt(CPUState *cs)
 
     qemu_log_mask(CPU_LOG_TB_IN_ASM,
                   "An exception happend\n");
+
+    if (rr_in_record())
+        kernel_rr_record_event_exception(cs, env);
+    
 
 #if defined(CONFIG_USER_ONLY)
     /* if user mode only, we simulate a fake exception
@@ -1327,7 +1361,7 @@ static void handle_hw_interrupt(CPUState *cs, int intno) {
             printf("Non-maskable Interrupt\n");
             break;
         case 32 ... 238:
-            kernel_rr_record_event(cs, 0, intno, KERNEL_INPUT_TYPE_INTERRUPT, NULL);
+            // kernel_rr_record_event(cs, 0, intno, KERNEL_INPUT_TYPE_INTERRUPT, NULL);
             break;
         // case 239:
         //     printf("APIC Timer Interrupt\n");
@@ -1401,6 +1435,9 @@ bool x86_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
             intno = panda_callbacks_before_handle_interrupt(cs, intno);
 
             if (rr_in_record()) {
+                if (rr_in_cfu())
+                    rr_int_during_cfu_start();
+
                 handle_hw_interrupt(cs, intno);
             }
             qemu_log_mask(CPU_LOG_TB_IN_ASM,
@@ -2304,6 +2341,9 @@ void helper_iret_protected(CPUX86State *env, int shift, int next_eip)
         helper_ret_protected(env, shift, 1, 0, GETPC());
     }
     env->hflags2 &= ~HF2_NMI_MASK;
+
+    if (rr_in_cfu())
+        rr_int_during_cfu_end();
 }
 
 void helper_lret_protected(CPUX86State *env, int shift, int addend)

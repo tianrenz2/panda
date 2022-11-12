@@ -1075,7 +1075,7 @@ void rr_replay_input_8(RR_callsite_id call_site, uint64_t* data) {
     rr_assert(current_item);
     *data = current_item->variant.input_8;
     rr_queue_pop_front();
-    printf("Replayed %ld %s\n", current_item->header.prog_point.guest_instr_count, get_callsite_string(call_site));
+    // printf("Replayed %ld %s\n", current_item->header.prog_point.guest_instr_count, get_callsite_string(call_site));
 }
 
 /**
@@ -1090,7 +1090,7 @@ void rr_replay_interrupt_request(RR_callsite_id call_site,
     if (current_item != NULL) {
         panda_current_interrupt_request = current_item->variant.interrupt_request;
         rr_queue_pop_front();
-        printf("Replayed %ld %s\n", current_item->header.prog_point.guest_instr_count, get_callsite_string(call_site));
+        // printf("Replayed %ld %s\n", current_item->header.prog_point.guest_instr_count, get_callsite_string(call_site));
     }
     *interrupt_request = panda_current_interrupt_request;
 }
@@ -1541,6 +1541,9 @@ int rr_do_begin_record(const char* file_name_full, CPUState* cpu_state)
     char* rr_path = dirname(rr_path_base);
     char* rr_name = basename(rr_name_base);
     int snapshot_ret = -1;
+
+    qemu_log("begin record\n");
+
     if (rr_debug_whisper()) {
         qemu_log("Begin vm record for file_name_full = %s\n", file_name_full);
         qemu_log("path = [%s]  file_name_base = [%s]\n", rr_path, rr_name);
@@ -1623,6 +1626,7 @@ void rr_do_end_record(void)
     flush_event_records();
     flush_ld_blk_records();
 
+    qemu_log("end record\n");
     // turn off logging
     rr_control.mode = RR_OFF;
 #endif

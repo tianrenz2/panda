@@ -912,12 +912,16 @@ int cpu_exec(CPUState *cpu)
             //     qemu_log_unlock();
             // }
 
-                // if (rr_get_guest_instr_count() >= 560865) {
-                    // printf("hit the point\n");
-                    // tb_lock();
-                    // tb_phys_invalidate(tb, -1);
-                    // tb_free(tb);
-                    // tb_unlock();
+                // if (rr_get_guest_instr_count() >= 540612) {
+                if (rr_in_replay()) {
+                    tb_lock();
+                    tb_phys_invalidate(tb, -1);
+                    tb_free(tb);
+                    tb_unlock();
+                }
+                // } 
+                // else if () {
+
                 // }
             }
         }

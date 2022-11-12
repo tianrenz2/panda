@@ -402,6 +402,16 @@ void kernel_rr_replay_event_syscall(CPUX86State *env, event_node *node) {
 	replay_regs_of_node(env, node);
 }
 
+static void print_node_regs(event_node *node) {
+	qemu_log_lock();
+	qemu_log("Node Regs:");
+	for (int i=0; i < CPU_NB_REGS; i++) {
+		qemu_log("%d=%lu,", i, node->args[i]);
+	}
+	qemu_log("\n");
+	qemu_log_unlock();
+}
+
 void kernel_rr_record_event_exception(CPUState *cs, CPUX86State *env) {
 	event_node* node = (struct event_node*)malloc(sizeof(struct event_node));
 
@@ -412,6 +422,9 @@ void kernel_rr_record_event_exception(CPUState *cs, CPUX86State *env) {
 
 	record_regs_on_node(env, node);
 	node->next = NULL;
+
+	qemu_log("recording exception: %d\n", node->exception_index);
+	print_node_regs(node);
 
 	post_handle_event(node);
 }
@@ -424,11 +437,13 @@ void kernel_rr_replay_event_exception(CPUState *cs, CPUX86State *env, event_node
 
 
 void print_regs(CPUX86State *env) {
-	printf("Regs:");
+	qemu_log_lock();
+	qemu_log("Regs:");
 	for (int i=0; i < CPU_NB_REGS; i++) {
-		printf("%d=%lu,", i, env->regs[i]);
+		qemu_log("%d=%lu,", i, env->regs[i]);
 	}
-	printf("\n");
+	qemu_log("\n");
+	qemu_log_unlock();
 }
 
 

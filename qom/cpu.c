@@ -286,9 +286,9 @@ static void cpu_common_reset(CPUState *cpu)
             atomic_set(&cpu->tb_jmp_cache[i], NULL);
         }
 
-// #ifdef CONFIG_SOFTMMU
-//         tlb_flush(cpu, 0);
-// #endif
+#ifdef CONFIG_SOFTMMU
+        tlb_flush(cpu, 0);
+#endif
     }
 }
 

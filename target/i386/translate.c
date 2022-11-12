@@ -8505,6 +8505,11 @@ void gen_intermediate_code(CPUX86State *env, TranslationBlock *tb)
         last_jumped_interrupt_inst = 0;
     }
 
+    // if (current_inst_cnt == 376196) {
+    //     printf("Fix the register\n");
+    //     env->regs[15] = 139695459335048;
+    // }
+
     if (rr_in_replay()) {
 //        tb->replay_interrupt = false;
         uint64_t until_interrupt = rr_num_instr_before_next_interrupt();
@@ -8553,6 +8558,7 @@ void gen_intermediate_code(CPUX86State *env, TranslationBlock *tb)
                     tb->empty_block = true;
                     tb->exception_signaled = true;
                     kernel_rr_replay_event_exception(cs, env, node);
+                    qemu_log("Replaying exception: %d\n", node->exception_index);
                 }
                 rr_set_guest_instr_count(node->inst_num_before);
                 // rr_eliminate_non_interrupt_items();
@@ -8730,7 +8736,7 @@ done_generating:
 
     }
 
-    if (rr_in_replay()) {
+    if (rr_in_replay() || rr_in_record()) {
         print_regs(env);
         // qemu_log_lock();
         // // X86CPU *x86_cpu = X86_CPU(cpu);

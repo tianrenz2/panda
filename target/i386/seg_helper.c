@@ -1326,7 +1326,7 @@ void x86_cpu_do_interrupt(CPUState *cs)
     qemu_log_mask(CPU_LOG_TB_IN_ASM,
                   "An exception happend\n");
 
-    if (rr_in_record())
+    if (rr_in_record() && x86_cpu_get_cpl(cs) != 0)
         kernel_rr_record_event_exception(cs, env);
     
 

@@ -23,6 +23,7 @@
  */
 
 #include "tcg-be-ldst.h"
+#include "panda/rr/rr_log.h"
 
 #ifdef CONFIG_DEBUG_TCG
 static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
@@ -1579,6 +1580,21 @@ static void tcg_out_qemu_ld_direct(TCGContext *s, TCGReg datalo, TCGReg datahi,
         bswap = 0;
         movop = OPC_MOVBE_GyMy;
     }
+    
+    // qemu_log("qemu_ld: lo=%d hi=%d base=%d\n", datalo, datahi, base);
+
+    // if (rr_kernel_in_replay()) {
+    //     if (rr_in_cfu() && !rr_in_int_during_cfu()) {
+    //         CPUState *cpu;
+    //         qemu_log("Recording ld\n");
+    //         CPU_FOREACH(cpu) {
+    //             X86CPU *x86_cpu = X86_CPU(cpu);
+    //             // kernel_record_ld_start()
+    //             print_regs(&x86_cpu->env);
+    //         }
+    //         qemu_log("\n");
+    //     }
+    // }
 
     switch (memop & MO_SSIZE) {
     case MO_UB:

@@ -3,14 +3,16 @@
 
 #include "panda/rr/rr_log.h"
 #include "panda/rr/kernel_rr.h"
+#include "panda/callbacks/cb-support.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-
+// Save syscall && exceptions
 const char *kernel_rr_log = "kernel_rr.log";
 const char *kernel_ld_blk_log = "kernel_ld_blk.log";
 const char *kernel_ld_entry_log = "kernel_ld_entry.log";
+const char *kernel_cfu_log = "kernel_cfu.log";
 
 event_node *syscall_head;
 event_node *syscall_current;
@@ -23,12 +25,125 @@ load_block *lb_replay_head;
 load_block *lb_head;
 load_block *lb_current;
 
+cfu *cfu_head = NULL;
+cfu *cfu_current = NULL;
+
 int cached_syscall_num = 0;
 int max_cached_syscall_record = 1000;
 
 static bool in_cfu = false;
 static bool interrupt_in_cfu = false;
 
+
+static cfu* new_cfu(void) {
+	cfu *node = (struct cfu*)malloc(sizeof(struct cfu));
+	node->next = NULL;
+	return node;
+}
+
+void kernel_record_cfu(CPUState *cs, hwaddr src_addr, hwaddr dest_addr, int len) {    
+	uint64_t inst_num = rr_get_guest_instr_count();
+	if (cfu_head == NULL) {
+		cfu_head = new_cfu();
+		cfu_head->src_addr = src_addr;
+		cfu_head->dest_addr = dest_addr;
+		cfu_head->inst_num_before = inst_num;
+		cfu_head->len = len;
+		cfu_current = cfu_head;
+	} else {
+		cfu_current->next = new_cfu();
+		cfu_current->next->src_addr = src_addr;
+		cfu_current->next->dest_addr = dest_addr;
+		cfu_current->next->inst_num_before = inst_num;
+		cfu_current->next->len = len;
+		cfu_current = cfu_current->next;
+	}
+
+	qemu_log("Read from $0x%016" PRIx64 ", len=%d\n", dest_addr, len);
+
+	for (int i = 0; i < len; i++) {
+		int ret = panda_virtual_memory_read(cs, dest_addr + i, &cfu_current->data[i], 1);
+
+		if (ret != 0) {
+			printf("Read failed!");
+			exit(1);
+		}
+		// qemu_log("Read from $0x%016" PRIx64 ", val=%u, ret=%d\n", dest_addr, cfu_current->data[i], ret);
+	}
+
+	return;
+}
+
+void kernel_replay_cfu(CPUState *cs, hwaddr dest_addr) {
+	qemu_log("Write to $0x%" TCG_PRIlx ", len=%d ", dest_addr, cfu_head->len);
+	// uint8_t v = 0;
+	for (int i = 0; i < cfu_head->len; i++) {
+		panda_virtual_memory_write(cs, dest_addr + i, &cfu_head->data[i], 1);
+	}
+	// qemu_log("val %d=%u\n", i, cfu_head->data[i]);
+
+	qemu_log("\n");
+	cfu_head = cfu_head->next;
+	return;
+}
+
+static void persist_cfu(cfu *node, FILE *fptr) {
+	fwrite(node, sizeof(struct cfu), 1, fptr);
+}
+
+void persist_cfus(void) {
+	FILE *fptr = fopen(kernel_cfu_log, "a");
+	cfu *cur= cfu_head;
+	int i = 1;
+
+	while (cur != NULL) {
+		persist_cfu(cur, fptr);
+		printf("persist cfu src=$0x%" TCG_PRIlx " dest=$0x%" TCG_PRIlx ", len=%d, ", cur->src_addr, cur->dest_addr, cur->len);
+		for (int i = 0; i < cur->len; i++) {
+			printf("data %d=%u, ", i, cur->data[i]);
+		}
+		printf("\n");
+		cur = cur->next;
+		i++;
+	}
+
+	fclose(fptr);
+	return;
+}
+
+void load_cfus(void) {
+	panda_enable_memcb();
+
+	FILE *fptr = fopen(kernel_cfu_log, "r");
+
+	struct cfu loaded_node;
+
+	while(fread(&loaded_node, sizeof(struct cfu), 1, fptr)) {
+		cfu* node = new_cfu();
+
+		node->src_addr = loaded_node.src_addr;
+		node->dest_addr = loaded_node.dest_addr;
+		node->inst_num_before = loaded_node.inst_num_before;
+		node->len = loaded_node.len;
+
+		for (int i = 0; i < node->len; i++) {
+			node->data[i] = loaded_node.data[i];
+		}
+
+		if (cfu_head == NULL) {
+			cfu_head = node;
+			cfu_current = cfu_head;
+		} else {
+			cfu_current->next = node;
+			cfu_current = cfu_current->next;
+		}
+		printf("loaded cfu src=$0x%" TCG_PRIlx " dest=$0x%" TCG_PRIlx "\n", cfu_current->src_addr, cfu_current->dest_addr);
+		for (int i = 0; i < node->len; i++) {
+			printf("data %d=%u", i, node->data[i]);
+		}
+		printf("\n");
+	}
+}
 
 static void persist_ld_blk(load_block *node, FILE *fptr) {
 	fwrite(node, sizeof(struct load_block), 1, fptr);
@@ -272,6 +387,13 @@ static void free_all_nodes(void) {
 	}
 }
 
+static void load_node_regs(event_node *node, event_node loaded_node) {
+	for (int i=0; i < CPU_NB_REGS; i++) {
+		 node->args[i] = loaded_node.args[i];
+	}
+}
+
+
 void load_kernel_log(void) {
 	FILE *fptr = fopen(kernel_rr_log, "r");
 
@@ -287,19 +409,12 @@ void load_kernel_log(void) {
 		// node->id_no = loaded_node.id_no;
 		// node->type = KERNEL_INPUT_TYPE_SYSCALL;
 		node->inst_num_before = loaded_node.inst_num_before;
-		// printf("loaded type %d number inst: %ld \n", node->type, node->inst_num_before);
+		printf("loaded type %d number inst: %ld \n", node->type, node->inst_num_before);
 		// printf("replay kernel syscall: %ld, arg1: %ld, arg2: %ld, arg3: %ld, arg4: %ld, arg5: %ld, arg6: %ld, arg7: %ld\n",
 		// 	   loaded_node.args[0], loaded_node.args[1], loaded_node.args[2], loaded_node.args[3], loaded_node.args[4], 
 		// 	   loaded_node.args[5], loaded_node.args[6], loaded_node.args[7]);
-		node->args[0] = loaded_node.args[0];
-		node->args[1] = loaded_node.args[1];
-		node->args[2] = loaded_node.args[2];
-		node->args[3] = loaded_node.args[3];
-		node->args[4] = loaded_node.args[4];
-		node->args[5] = loaded_node.args[5];
-		node->args[6] = loaded_node.args[6];
-		node->args[7] = loaded_node.args[7];
-		
+		load_node_regs(node, loaded_node);
+
 		if (syscall_replay_head == NULL) {
 			syscall_replay_head = node;
 			syscall_replay_current = node;
@@ -402,11 +517,11 @@ void kernel_rr_replay_event_syscall(CPUX86State *env, event_node *node) {
 	replay_regs_of_node(env, node);
 }
 
-static void print_node_regs(event_node *node) {
+void print_node_regs(event_node *node) {
 	qemu_log_lock();
 	qemu_log("Node Regs:");
 	for (int i=0; i < CPU_NB_REGS; i++) {
-		qemu_log("%d=%lu,", i, node->args[i]);
+		qemu_log("%d=$0x%"TCG_PRIlx",", i, node->args[i]);
 	}
 	qemu_log("\n");
 	qemu_log_unlock();
@@ -417,13 +532,15 @@ void kernel_rr_record_event_exception(CPUState *cs, CPUX86State *env) {
 
 	node->type = 1;
 	node->exception_index = cs->exception_index;
+	node->error_code = env->error_code;
+	node->cr2 = env->cr[2];
 
 	node->inst_num_before = rr_get_guest_instr_count();
 
 	record_regs_on_node(env, node);
 	node->next = NULL;
 
-	qemu_log("recording exception: %d\n", node->exception_index);
+	qemu_log("recording exception: %d, error_code %d\n", node->exception_index, node->error_code);
 	print_node_regs(node);
 
 	post_handle_event(node);
@@ -431,6 +548,9 @@ void kernel_rr_record_event_exception(CPUState *cs, CPUX86State *env) {
 
 void kernel_rr_replay_event_exception(CPUState *cs, CPUX86State *env, event_node *node) {
 	cs->exception_index = node->exception_index;
+	env->error_code = node->error_code;
+	env->cr[2] = node->cr2;
+	qemu_log("replaying exception: %d error_code=%d\n", node->exception_index, node->error_code);
 
 	replay_regs_of_node(env, node);
 }
@@ -440,7 +560,8 @@ void print_regs(CPUX86State *env) {
 	qemu_log_lock();
 	qemu_log("Regs:");
 	for (int i=0; i < CPU_NB_REGS; i++) {
-		qemu_log("%d=%lu,", i, env->regs[i]);
+		qemu_log("%d=%016"PRIx64",", i, env->regs[i]);
+		// qemu_log("%d=%lu,", i, env->regs[i]);
 	}
 	qemu_log("\n");
 	qemu_log_unlock();

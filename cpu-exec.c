@@ -905,20 +905,20 @@ int cpu_exec(CPUState *cpu)
             //     X86CPU *x86_cpu = X86_CPU(cpu);
             //     CPUX86State *env = &x86_cpu->env;
             //     qemu_log("rax:%ld rcx:%ld rdx:%ld, rbx:%ld, rsp:%ld, rbp:%ld, rsi:%ld, rdi:%ld\n",
-            //         env->regs[R_EAX], env->regs[R_ECX],
+                    // env->regs[R_EAX], env->regs[R_ECX],
             //         env->regs[R_EDX], env->regs[R_EBX],
             //         env->regs[R_ESP], env->regs[R_EBP],
             //         env->regs[R_ESI], env->regs[R_EDI]);
             //     qemu_log_unlock();
             // }
 
-                // if (rr_get_guest_instr_count() >= 540612) {
-                if (rr_in_replay()) {
-                    tb_lock();
-                    tb_phys_invalidate(tb, -1);
-                    tb_free(tb);
-                    tb_unlock();
-                }
+                // if (rr_get_guest_instr_count() > 1165236) {
+                    // if (rr_in_replay()) {
+                    //     tb_lock();
+                    //     tb_phys_invalidate(tb, -1);
+                    //     tb_free(tb);
+                    //     tb_unlock();
+                    // }
                 // } 
                 // else if () {
 

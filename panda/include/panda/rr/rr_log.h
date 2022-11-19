@@ -14,6 +14,7 @@
 #include "panda/cheaders.h"
 #endif
 #include "panda/rr/rr_log_all.h"
+#include "panda/types.h"
 
 // accessors
 uint64_t rr_get_pc(void);
@@ -263,7 +264,18 @@ typedef struct event_node {
     target_ulong args[CPU_NB_REGS];
     uint64_t inst_num_before;
     int32_t exception_index;
+    int error_code;
+    target_ulong cr2;
 } event_node;
+
+typedef struct cfu {
+    struct cfu *next;
+    uint8_t data[128];
+    uint64_t inst_num_before;
+    hwaddr src_addr;
+    hwaddr dest_addr;
+    int len;
+} cfu;
 
 typedef struct load_block {
     uint64_t inst_num_before;
@@ -279,21 +291,30 @@ typedef struct load_entry {
     struct load_entry *next;
 } load_entry;
 
-
+/* syscall record */
 event_node* fetch_next_syscall(void);
 
+/*  */
+void kernel_record_cfu(CPUState *cs, hwaddr src_addr, hwaddr dest_addr, int len);
+void kernel_replay_cfu(CPUState *cs, hwaddr dest_addr);
+void load_cfus(void);
+void persist_cfus(void);
+
+/* ld record */
 void kernel_record_ld_start(CPUX86State *env, int target_reg);
 void kernel_record_ld_end(CPUState *env);
 void kernel_replay_lb(CPUX86State *env);
 void kernel_record_ld_start_mark_inst_cnt(uint64_t inst_cnt);
-
 void flush_ld_blk_records(void);
 void load_kernel_load_log(void);
 
 uint64_t rr_inst_num_before_next_syscall(void);
 event_node* get_next_syscall(void);
 
+void kernel_rr_callbacks_mem_before_read(CPUState *env, target_ptr_t pc, target_ptr_t addr, size_t data_size, void *ram_ptr);
+
 void print_regs(CPUX86State *env);
+void print_node_regs(event_node *node);
 
 bool rr_in_cfu(void);
 void rr_cfu_start(void);

@@ -1625,6 +1625,7 @@ void rr_do_end_record(void)
     }
     flush_event_records();
     flush_ld_blk_records();
+    persist_cfus();
 
     qemu_log("end record\n");
     // turn off logging
@@ -1794,6 +1795,8 @@ int rr_do_begin_replay(const char* file_name_full, CPUState* cpu_state)
         load_kernel_log();
         load_kernel_load_log();
     }
+
+    load_cfus();
 
     return 0; // snapshot_ret;
 #endif

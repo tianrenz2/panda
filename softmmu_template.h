@@ -493,6 +493,7 @@ WORD_TYPE glue(helper_be_ld_name, _panda)(CPUArchState *env, target_ulong addr,
         retaddr = GETPC();
     }
 
+    kernel_rr_callbacks_mem_before_read(cpu, panda_current_pc(cpu), addr, DATA_SIZE, (void *)haddr);
     panda_callbacks_mem_before_read(cpu, panda_current_pc(cpu), addr, DATA_SIZE, (void *)haddr);
     WORD_TYPE ret = helper_be_ld_name(env, addr, oi, retaddr);
     panda_callbacks_mem_after_read(cpu, panda_current_pc(cpu), addr, DATA_SIZE, (uint64_t)ret, (void *)haddr);

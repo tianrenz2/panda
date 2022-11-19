@@ -24,6 +24,31 @@ the [GPLv2 license](LICENSE).
 
 ---------------------------------------------------------------------
 
+## Kernel Record & Replay
+
+Kernel Record & Replay(Kernel RR) is a new approach of Record & Replay focusing on kernel, instead of recording and replaying all the non-deterministic points, kernel RR records and replay all the kernel inputs, such as system calls,
+interrupts, exceptions and memory copies via copy_from_user (this requires modification of guest OS). The goal is also
+to reproduce the same kernel instruction traces as recorded.
+
+Only X86_64 Intel is supported for now.
+
+To record:
+```
+./panda-system-x86_64 -accel tcg -cpu core2duo -m size=2G -drive file=<your disk file>,if=none,id=disk1 -device ide-hd,drive=disk1,bootindex=0 -vnc :53 -monitor stdio -D ./replay.log -replay test1
+```
+
+To record, in qemu monitor, type
+```
+(qemu) begin_record test1
+...
+(qemu) end_record
+```
+
+To replay the kernel, run
+```
+./panda-system-x86_64 -accel tcg -cpu core2duo -m size=2G -drive file=/disks/os_e04945b1-d29e-4ba0-a5c0-63ff1e03e928.qcow2,if=none,id=disk1 -device ide-hd,drive=disk1,bootindex=0 -vnc :53 -monitor stdio -D ./replay.log -replay test1 -kernel-replay test1
+```
+
 ## Notable Branches
 We have two primary branches of PANDA: `dev` for development and `stable` for stable+versioned releases. To learn more about the differences between these branches and version numbers, visit [our wiki](https://github.com/panda-re/panda/wiki/PANDA-Branches-&-Versioning). In general, PANDA resources (i.e., docker containers and documentation) are based off the `dev` branch. We recommend using the `stable` branch if you're going to fork the project and later pull in updates.
 

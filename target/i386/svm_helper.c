@@ -25,6 +25,7 @@
 #include "exec/cpu_ldst.h"
 
 #include "panda/rr/rr_log.h"
+#include "panda/common.h"
 
 /* Secure Virtual Machine helpers */
 
@@ -352,26 +353,52 @@ void helper_vmrun(CPUX86State *env, int aflag, int next_eip_addend)
     }
 }
 
+hwaddr last_src_addr = 0;
+hwaddr last_dest_addr = 0;
+int last_len = 0;
+
 void helper_vmmcall(CPUX86State *env)
 {
+    CPUState *cs = NULL;
+
     if (!rr_in_record() && !rr_in_replay())
         return;
 
+    cs = CPU(x86_env_get_cpu(env));
+
     if (!rr_in_cfu()) {
-        if (rr_in_replay()) {
-            qemu_log_lock();
-            qemu_log("copy from user start");
-            qemu_log("\n");
-            qemu_log_unlock();
-        }
+        qemu_log_lock();
+        qemu_log("copy from user start");
+        qemu_log("\n");
+        qemu_log_unlock();
         rr_cfu_start();
-    } else {
-        if (rr_in_replay()) {
-            qemu_log_lock();
-            qemu_log("copy from user end");
-            qemu_log("\n");
-            qemu_log_unlock();
+
+        // tb_flush(cs);
+
+        if (rr_in_record() || rr_in_replay()) {
+            last_src_addr = env->regs[R_ESI];
+            last_dest_addr = env->regs[R_EDI];
+            last_len =  env->regs[R_EDX];
         }
+
+        // int ret3 = panda_physical_memory_read(src_hwaddr, &val_l, 8);
+        // qemu_log("Read from $0x%" TCG_PRIlx ", len=%d, val=%u, ret=%d\n", src_hwaddr, len, val_l, ret3);
+    } else {
+        qemu_log_lock();
+        qemu_log("copy from user end");
+        qemu_log("\n");
+        qemu_log_unlock();
+
+        if (rr_in_record()) {
+            kernel_record_cfu(cs, last_src_addr, last_dest_addr, last_len);
+        }
+
+        if (rr_kernel_in_replay()) {
+            kernel_replay_cfu(cs, last_dest_addr);
+            qemu_log("write len %lu\n", env->regs[R_EDX]);
+            // qemu_log("Read from $0x%" TCG_PRIlx ", len=%d, val=%u, ret=%d\n", dest_addr, len, val_l, ret);
+        }
+
         rr_cfu_end();
     }
     // qemu_log_lock();

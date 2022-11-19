@@ -222,9 +222,6 @@ static inline tcg_target_ulong cpu_tb_exec(CPUState *cpu, TranslationBlock *itb)
     exitCode = (uint8_t)tb_exit;
     panda_callbacks_after_block_exec(cpu, itb, exitCode);
 
-    if (rr_in_record() && rr_in_cfu() && !rr_in_int_during_cfu())
-        kernel_record_ld_end(cpu);
-
     trace_exec_tb_exit(last_tb, tb_exit);
 
     if (tb_exit > TB_EXIT_IDX1) {
@@ -905,20 +902,20 @@ int cpu_exec(CPUState *cpu)
             //     X86CPU *x86_cpu = X86_CPU(cpu);
             //     CPUX86State *env = &x86_cpu->env;
             //     qemu_log("rax:%ld rcx:%ld rdx:%ld, rbx:%ld, rsp:%ld, rbp:%ld, rsi:%ld, rdi:%ld\n",
-            //         env->regs[R_EAX], env->regs[R_ECX],
+                    // env->regs[R_EAX], env->regs[R_ECX],
             //         env->regs[R_EDX], env->regs[R_EBX],
             //         env->regs[R_ESP], env->regs[R_EBP],
             //         env->regs[R_ESI], env->regs[R_EDI]);
             //     qemu_log_unlock();
             // }
 
-                // if (rr_get_guest_instr_count() >= 540612) {
-                if (rr_in_replay()) {
-                    tb_lock();
-                    tb_phys_invalidate(tb, -1);
-                    tb_free(tb);
-                    tb_unlock();
-                }
+                // if (rr_get_guest_instr_count() > 1165236) {
+                    // if (rr_in_replay()) {
+                    //     tb_lock();
+                    //     tb_phys_invalidate(tb, -1);
+                    //     tb_free(tb);
+                    //     tb_unlock();
+                    // }
                 // } 
                 // else if () {
 

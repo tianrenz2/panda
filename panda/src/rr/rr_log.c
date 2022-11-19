@@ -1624,7 +1624,7 @@ void rr_do_end_record(void)
 	rr_control.snapshot = NULL;
     }
     flush_event_records();
-    flush_ld_blk_records();
+    persist_cfus();
 
     qemu_log("end record\n");
     // turn off logging
@@ -1635,7 +1635,7 @@ void rr_do_end_record(void)
 void rr_clear_low_prviledge_entry(void) {
     RR_log_entry* entry = get_next_entry();
 
-    while (entry->header.cpl != 0 && (entry->header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_BEFORE && entry->header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_AFTER &&  entry->header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_INTNO)) {
+    while (entry != NULL && entry->header.cpl != 0 && (entry->header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_BEFORE && entry->header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_AFTER &&  entry->header.callsite_loc != RR_CALLSITE_CPU_HANDLE_INTERRUPT_INTNO)) {
         printf("removed entry: %s\n", get_callsite_string(entry->header.callsite_loc));
         rr_queue_pop_front();
         entry = get_next_entry();
@@ -1792,8 +1792,9 @@ int rr_do_begin_replay(const char* file_name_full, CPUState* cpu_state)
 
     if (rr_kernel_in_replay()) {
         load_kernel_log();
-        load_kernel_load_log();
+        load_cfus();
     }
+
 
     return 0; // snapshot_ret;
 #endif
@@ -1843,6 +1844,13 @@ void rr_do_end_replay(int is_error)
     } else {
         printf("Replay terminated at user request.\n");
     }
+
+    if (rr_kernel_in_replay()) {
+        printf("Replayed number of syscalls = %d\n", kernel_rr_get_past_syscall_num());
+        printf("Replayed number of exceptions = %d\n", kernel_rr_get_past_exception_num());
+        printf("Replayed number of copy_from_user = %d\n", kernel_rr_get_past_cfu_num());
+    }
+
     rr_queue_head = NULL;
     rr_queue_tail = NULL;
     // mz print CPU state at end of replay

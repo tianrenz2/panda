@@ -102,6 +102,8 @@ static int last_priviledge = 0;
 
 static uint64_t last_jumped_interrupt_inst = 0;
 
+static bool first_moved = false;
+
 #include "exec/gen-icount.h"
 
 #ifdef TARGET_X86_64
@@ -5439,10 +5441,6 @@ static target_ulong disas_insn(CPUX86State *env, DisasContext *s,
         reg = ((modrm >> 3) & 7) | rex_r;
         gen_ldst_modrm(env, s, modrm, ot, OR_TMP0, 0);
         gen_op_mov_reg_v(ot, reg, cpu_T0);
-        if (rr_in_record() && rr_in_cfu() && !rr_in_int_during_cfu()) {
-            assert(s->cpl == 0);
-            kernel_record_ld_start(env, reg);
-        }
         break;
     case 0x8e: /* mov seg, Gv */
         modrm = cpu_ldub_code(env, s->pc++);
@@ -6260,6 +6258,18 @@ static target_ulong disas_insn(CPUX86State *env, DisasContext *s,
     case 0xa5:
         ot = mo_b_d(b, dflag);
         if (prefixes & (PREFIX_REPZ | PREFIX_REPNZ)) {
+            if (rr_in_cfu()) {
+                qemu_log("Gen rep movs\n");
+                if (!first_moved) {
+                    // target_ulong user_addr = env->regs[6];
+                    // target_ulong len = env->regs[2];
+                    // X86CPU *cpu = x86_env_get_cpu(env);
+                    // CPUState *cs = CPU(cpu);
+                    // uint32_t val = x86_lduw_phys(cs, user_addr);
+                    // qemu_log("Reading from $0x%" TCG_PRIlx ", len=%ld, val=%u\n", user_addr, len, val);
+                    first_moved = true;
+                }
+            }
             gen_repz_movs(s, ot, pc_start - s->cs_base, s->pc - s->cs_base);
         } else {
             gen_movs(s, ot);
@@ -8397,6 +8407,7 @@ void gen_intermediate_code(CPUX86State *env, TranslationBlock *tb)
     int num_insns;
     int max_insns;
     int force_syscall = false;
+    bool single_step = false;
 
 
     /* generate intermediate code */
@@ -8492,12 +8503,6 @@ void gen_intermediate_code(CPUX86State *env, TranslationBlock *tb)
         max_insns = TCG_MAX_INSNS;
     }
 
-
-//    if (pc_ptr == 0x00007ffff7b7248b)
-//        printf ("translate.c: pc is magic\n");
-
-//    bool replay_interrupt = false;
-
     uint64_t current_inst_cnt = rr_get_guest_instr_count();
 
     if (last_jumped_interrupt_inst > 0) {
@@ -8505,59 +8510,55 @@ void gen_intermediate_code(CPUX86State *env, TranslationBlock *tb)
         last_jumped_interrupt_inst = 0;
     }
 
-    // if (current_inst_cnt == 376196) {
-    //     printf("Fix the register\n");
-    //     env->regs[15] = 139695459335048;
-    // }
-
     if (rr_in_replay()) {
-//        tb->replay_interrupt = false;
         uint64_t until_interrupt = rr_num_instr_before_next_interrupt();
 
         if (dc->cpl != 0 && rr_kernel_in_replay()) {
             rr_clear_low_prviledge_entry();
+            bool is_entry_over = false;
+            bool is_syscall_over = false;
+            uint64_t until_next_entry = rr_num_instr_before_next_log_entry(&is_entry_over);
+            uint64_t util_syscall = rr_inst_num_before_next_syscall(&is_syscall_over);
 
-            uint64_t until_next_entry = rr_num_instr_before_next_log_entry();
-            uint64_t util_syscall = rr_inst_num_before_next_syscall();
+            if (is_entry_over && is_syscall_over) {
+                printf("Replay has been over\n");
+                kernel_rr_do_end_replay();
+            }
 
-            printf("next entry in %lu, next event in %lu\n", until_next_entry, util_syscall);
+            qemu_log("next entry in %lu, next event in %lu\n", until_next_entry, util_syscall);
             print_head_tail();
 
-            if (until_next_entry < util_syscall) {
+            if (!is_entry_over && until_next_entry < util_syscall) {
                 RR_log_entry *n_entry = rr_get_queue_head();
 
                 last_jumped_interrupt_inst = until_next_entry;
                 uint64_t new_cnt = current_inst_cnt + until_next_entry;
-                // rr_eliminate_non_interrupt_items();
                 rr_set_guest_instr_count(new_cnt);
-                // until_interrupt = 0;
-                printf("jump from %ld to %ld next entry\n", current_inst_cnt, new_cnt);
-                printf("next event cpl:%d, callsite %s\n", n_entry->header.cpl, get_callsite_string(n_entry->header.callsite_loc));
-                // printf("next rr_log callsite in queue: %s\n", rr_get_next_interrupt_callsite());
+                qemu_log("jump from %ld to %ld next entry\n", current_inst_cnt, new_cnt);
+                qemu_log("next event cpl:%d, callsite %s\n", n_entry->header.cpl, get_callsite_string(n_entry->header.callsite_loc));
 
                 if (until_next_entry == util_syscall) {
                     event_node *node = fetch_next_syscall();
-                    printf("Skip next event %d\n", node->type);
+                    qemu_log("Skip next event %d\n", node->type);
                 }
 
                 tb->empty_block = true;
             } else {
                 event_node *node = get_next_syscall();
 
-                // if (until_next_entry == util_syscall) {
-                //     printf("Skip next entry\n");
-                //     rr_pop_front_item();
-                //     printf("next entry: %lu\n", rr_get_queue_head()->header.prog_point.guest_instr_count);
-                // }
+                if (node == NULL) {
+                    kernel_rr_do_end_replay();
+                }
 
                 if (node->type == 0) {
                     force_syscall = true;
                 } else {
                     node = fetch_next_syscall();
-                    printf("jump to next exception\n");
+                    qemu_log("jump to next exception\n");
                     tb->empty_block = true;
                     tb->exception_signaled = true;
                     kernel_rr_replay_event_exception(cs, env, node);
+
                     qemu_log("Replaying exception: %d\n", node->exception_index);
                 }
                 rr_set_guest_instr_count(node->inst_num_before);
@@ -8571,21 +8572,15 @@ void gen_intermediate_code(CPUX86State *env, TranslationBlock *tb)
                 last_jumped_interrupt_inst = 0;
             }
         }
-        // if (dc->cpl != 0) {
-        //     rr_set_guest_instr_count(current_inst_cnt + until_interrupt);
-        //     rr_eliminate_outdate_items();
-        // }
 
         if (max_insns > until_interrupt) {
             max_insns = until_interrupt;
-//            tb->replay_interrupt = true;
-//            replay_interrupt = true;
         }
-//        tb->tcg_op_buf_full = false;
         tb->was_split = false;
     }
 
     uint64_t rr_updated_instr_count = rr_get_guest_instr_count();
+
 
     if (!tb->empty_block) {
     /*
@@ -8685,6 +8680,13 @@ generate_debug:
         /* stop translation if indicated */
         if (dc->is_jmp)
             break;
+
+        if (single_step) {
+            gen_jmp_im(pc_ptr - dc->cs_base);
+            gen_eob(dc);
+            break;
+        }
+
         /* if single step mode, we generate only one instruction and
            generate an exception */
         /* if irq were inhibited with HF_INHIBIT_IRQ_MASK, we clear
@@ -8756,19 +8758,13 @@ done_generating:
     uint64_t inst_cnt = rr_get_guest_instr_count();
     // printf("pc: %ld\n", pc_ptr);
 
-    if (rr_kernel_in_replay() && rr_in_cfu() && !rr_in_int_during_cfu()) {
-        kernel_replay_lb(env);
-    }
-
-    // if (rr_in_replay()) {
-    //     qemu_log("rax:%ld rcx:%ld rdx:%ld, rbx:%ld, rsp:%ld, rbp:%ld, rsi:%ld, rdi:%ld\n",
-    //         cpu->env.regs[R_EAX], cpu->env.regs[R_ECX],
-    //         cpu->env.regs[R_EDX], cpu->env.regs[R_EBX],
-    //         cpu->env.regs[R_ESP], cpu->env.regs[R_EBP],
-    //         cpu->env.regs[R_ESI], cpu->env.regs[R_EDI]);
+    // if (rr_kernel_in_replay() && rr_in_cfu() && !rr_in_int_during_cfu()) {
+    //     kernel_replay_lb(env);
     // }
 
-    // if (rr_in_record() || rr_in_replay()) {
+    if (single_step) {
+        printf("Single step translated\n");
+    }
 
 #ifdef DEBUG_DISAS
     if (qemu_loglevel_mask(CPU_LOG_TB_IN_ASM)
@@ -8784,7 +8780,7 @@ done_generating:
 #endif
             disas_flags = !dc->code32;
         log_target_disas(cs, pc_start, pc_ptr - pc_start, disas_flags);
-        qemu_log("pc: %lu\n", pc_ptr);
+        qemu_log("pc: $0x%" TCG_PRIlx"\n", pc_ptr);
         qemu_log("\n");
         qemu_log_unlock();
     }
@@ -8792,8 +8788,6 @@ done_generating:
     // }
     tb->size = pc_ptr - pc_start;
     tb->icount = num_insns;
-    if (rr_in_record())
-        kernel_record_ld_start_mark_inst_cnt(num_insns);
 }
 
 void restore_state_to_opc(CPUX86State *env, TranslationBlock *tb,

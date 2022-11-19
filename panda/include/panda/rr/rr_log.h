@@ -14,6 +14,9 @@
 #include "panda/cheaders.h"
 #endif
 #include "panda/rr/rr_log_all.h"
+#include "panda/types.h"
+
+#define ENTRY_EMPTY_FLAG -1;
 
 // accessors
 uint64_t rr_get_pc(void);
@@ -222,16 +225,23 @@ static inline uint64_t rr_num_instr_before_next_interrupt(void) {
     }
 }
 
-static inline uint64_t rr_num_instr_before_next_log_entry(void) {
+static inline uint64_t rr_num_instr_before_next_log_entry(bool *is_over) {
     RR_log_entry *head = rr_get_queue_head();
     if (!head) rr_fill_queue();
+
+    if (head == NULL) {
+        *is_over = true;
+        return 0;
+    }
+
+    *is_over = false;
 
     return head->header.prog_point.guest_instr_count - rr_get_guest_instr_count();
 }
 
 static inline void print_head_tail(void) {
-    printf("head: %ld ", rr_get_queue_head()->header.prog_point.guest_instr_count);
-    printf("tail: %ld\n", rr_queue_tail->header.prog_point.guest_instr_count);
+    // printf("head: %ld ", rr_get_queue_head()->header.prog_point.guest_instr_count);
+    // printf("tail: %ld\n", rr_queue_tail->header.prog_point.guest_instr_count);
 }
 
 static inline const char* rr_get_next_interrupt_kind(void) {
@@ -263,7 +273,18 @@ typedef struct event_node {
     target_ulong args[CPU_NB_REGS];
     uint64_t inst_num_before;
     int32_t exception_index;
+    int error_code;
+    target_ulong cr2;
 } event_node;
+
+typedef struct cfu {
+    struct cfu *next;
+    uint8_t data[128];
+    uint64_t inst_num_before;
+    hwaddr src_addr;
+    hwaddr dest_addr;
+    int len;
+} cfu;
 
 typedef struct load_block {
     uint64_t inst_num_before;
@@ -279,21 +300,25 @@ typedef struct load_entry {
     struct load_entry *next;
 } load_entry;
 
+void kernel_rr_do_end_replay(void);
+int kernel_rr_get_past_syscall_num(void);
+int kernel_rr_get_past_exception_num(void);
+int kernel_rr_get_past_cfu_num(void);
 
+/* syscall record */
 event_node* fetch_next_syscall(void);
 
-void kernel_record_ld_start(CPUX86State *env, int target_reg);
-void kernel_record_ld_end(CPUState *env);
-void kernel_replay_lb(CPUX86State *env);
-void kernel_record_ld_start_mark_inst_cnt(uint64_t inst_cnt);
+/* copy_from_user rr */
+void kernel_record_cfu(CPUState *cs, hwaddr src_addr, hwaddr dest_addr, int len);
+void kernel_replay_cfu(CPUState *cs, hwaddr dest_addr);
+void load_cfus(void);
+void persist_cfus(void);
 
-void flush_ld_blk_records(void);
-void load_kernel_load_log(void);
-
-uint64_t rr_inst_num_before_next_syscall(void);
+uint64_t rr_inst_num_before_next_syscall(bool *is_over);
 event_node* get_next_syscall(void);
 
 void print_regs(CPUX86State *env);
+void print_node_regs(event_node *node);
 
 bool rr_in_cfu(void);
 void rr_cfu_start(void);
@@ -306,6 +331,7 @@ void rr_eliminate_non_interrupt_items(void);
 void rr_eliminate_userspace_items(void);
 void rr_pop_front_item(void);
 void rr_clear_low_prviledge_entry(void);
+bool kernel_rr_node_empty(void);
 
 void kernel_rr_record_event_syscall(CPUX86State *env);
 void kernel_rr_record_event_kernel_load(CPUX86State *env, int target_reg);

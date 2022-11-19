@@ -992,6 +992,7 @@ void helper_syscall(CPUX86State *env, int next_eip_addend)
 {
     int selector;
     // printf("syscall triggered\n");
+    CPUState *cs = CPU(x86_env_get_cpu(env));
 
     if (!(env->efer & MSR_EFER_SCE)) {
         raise_exception_err_ra(env, EXCP06_ILLOP, 0, GETPC());
@@ -1015,10 +1016,11 @@ void helper_syscall(CPUX86State *env, int next_eip_addend)
         }
         // printf("trigger syscall, actual: %ld\n", rr_get_guest_instr_count());
 
-        if(rr_in_replay())
-            printf("replay kernel syscall: %ld, arg1: %ld, arg2: %ld, arg3: %ld, arg4: %ld, arg5: %ld, arg6: %ld, arg7: %ld\n",\
-                    env->regs[R_EAX], env->regs[R_ECX], env->regs[R_EDX], env->regs[R_EBX], env->regs[R_ESP], env->regs[R_EBP],\
-                    env->regs[R_ESI], env->regs[R_EDI]);
+        if(rr_in_replay()) {
+            tb_flush(cs);
+            qemu_log("replay kernel syscall:");
+            print_regs(env);
+        }
 
         code64 = env->hflags & HF_CS64_MASK;
 
@@ -1328,7 +1330,7 @@ void x86_cpu_do_interrupt(CPUState *cs)
 
     if (rr_in_record() && x86_cpu_get_cpl(cs) != 0)
         kernel_rr_record_event_exception(cs, env);
-    
+
 
 #if defined(CONFIG_USER_ONLY)
     /* if user mode only, we simulate a fake exception
